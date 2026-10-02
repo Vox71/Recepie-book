@@ -22,6 +22,19 @@ jobs:
       - name: Check out repository code
         uses: actions/checkout@v4
 
+      - name: Create .env file
+        run: |
+         cat > .env << EOF
+         POSTGRES_USER=${{ env.DB_USER }}
+         DB_NAME=${{ env.DB_NAME }}
+         DB_PORT=${{ env.DB_PORT }}
+         BACKEND_PORT=${{ env.BACKEND_PORT }}
+         FRONTEND_PORT=${{ env.FRONTEND_PORT }}
+         SWAGGER_PORT=${{ env.SWAGGER_PORT }}
+         DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+         FLASK_SECRET_KEY=${{ secrets.FLASK_SECRET_KEY }}
+         EOF
+    
       - name: Run Docker Compose
         run: docker compose up -d
 
