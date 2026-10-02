@@ -1,0 +1,544 @@
+openapi: 3.0.3
+info:
+  title: Recipe App API
+  version: 1.0.0
+  description: >
+    API Flask-приложения для рецептов, холодильника, аллергий/предпочтений,
+    JWT-авторизации и уведомлений о просроченных продуктах.
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+
+tags:
+  - name: System
+  - name: Auth
+  - name: Users
+  - name: Recipes
+  - name: Fridge
+  - name: Notifications
+  - name: Recommendations
+
+paths:
+  /:
+    get:
+      tags: [System]
+      summary: Проверка работы API
+      responses:
+        '200':
+          description: Приветствие
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Welcome to the recipe app!
+
+  /register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Ошибка валидации или дубликат пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /login:
+    post:
+      tags: [Auth]
+      summary: Вход пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Не переданы email или password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /protected:
+    get:
+      tags: [Auth]
+      summary: Проверка JWT-токена
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Доступ разрешён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResponse'
+        '401':
+          description: Токен отсутствует или недействителен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /user_preferences:
+    post:
+      tags: [Users]
+      summary: Добавить аллергии и предпочтения пользователя
+      description: >
+        В текущей реализации user_id передаётся в теле запроса.
+        Защита токеном для этого маршрута не применяется.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPreferencesRequest'
+      responses:
+        '200':
+          description: Аллергии и предпочтения добавлены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /recipes:
+    get:
+      tags: [Recipes]
+      summary: Получить все рецепты
+      responses:
+        '200':
+          description: Список рецептов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recipe'
+
+    post:
+      tags: [Recipes]
+      summary: Добавить новый рецепт
+      description: >
+        В коде декоратор token_required закомментирован, поэтому авторизация
+        фактически не требуется.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeInput'
+      responses:
+        '201':
+          description: Рецепт добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /recipes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+
+    get:
+      tags: [Recipes]
+      summary: Получить рецепт по ID
+      responses:
+        '200':
+          description: Рецепт найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipe'
+        '404':
+          description: Рецепт не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags: [Recipes]
+      summary: Обновить рецепт по ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeInput'
+      responses:
+        '200':
+          description: Рецепт обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+    delete:
+      tags: [Recipes]
+      summary: Удалить рецепт по ID
+      responses:
+        '200':
+          description: Рецепт удалён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /notify_expired:
+    get:
+      tags: [Notifications]
+      summary: Уведомить о просроченных продуктах текущего пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Уведомление отправлено или просроченных продуктов нет
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/NotifyExpiredResponse'
+                  - $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /delete_expired:
+    delete:
+      tags: [Notifications]
+      summary: Удалить просроченные продукты текущего пользователя
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Количество удалённых продуктов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteExpiredResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /suggest_recipes:
+    get:
+      tags: [Recommendations]
+      summary: Предложить рецепты с просроченными продуктами
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Список предложенных рецептов или сообщение
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/SuggestRecipesResponse'
+                  - $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /fridge_items:
+    get:
+      tags: [Fridge]
+      summary: Получить все продукты из fridge_items
+      description: Возвращает продукты всех пользователей, без фильтрации по токену.
+      responses:
+        '200':
+          description: Список продуктов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FridgeItem'
+
+    post:
+      tags: [Fridge]
+      summary: Добавить продукты в холодильник
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FridgeItemInput'
+      responses:
+        '201':
+          description: Продукты добавлены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /delete_expired_products:
+    delete:
+      tags: [Fridge]
+      summary: Удалить все просроченные продукты из fridge_items
+      description: >
+        Удаляет просроченные продукты всех пользователей, а не только текущего.
+        В коде есть потенциальная ошибка с datetime.date.today().
+      responses:
+        '200':
+          description: Просроченные продукты удалены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /recommend_recipes:
+    get:
+      tags: [Recommendations]
+      summary: Рекомендовать рецепты по холодильнику, аллергиям и предпочтениям
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Рекомендованные рецепты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendRecipesResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        allergies:
+          type: string
+          nullable: true
+          description: В /register передаётся как есть; в БД может быть строкой/JSON.
+        preferences:
+          type: string
+          nullable: true
+
+    RegisterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        user_id:
+          type: integer
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT-токен, срок жизни 12 часов
+
+    ProtectedResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        user_id:
+          type: string
+
+    UserPreferencesRequest:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        allergies:
+          type: array
+          items:
+            type: string
+        preferences:
+          type: array
+          items:
+            type: string
+
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        ingredients:
+          type: string
+        instructions:
+          type: string
+        cuisine_type:
+          type: string
+        difficulty_level:
+          type: string
+
+    RecipeInput:
+      type: object
+      required: [name, ingredients, instructions, cuisine_type, difficulty_level]
+      properties:
+        name:
+          type: string
+        ingredients:
+          type: string
+        instructions:
+          type: string
+        cuisine_type:
+          type: string
+        difficulty_level:
+          type: string
+
+    FridgeItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        product_name:
+          type: string
+        expiration_date:
+          type: string
+          format: date
+        quantity:
+          type: number
+        last_added:
+          type: string
+          format: date-time
+
+    FridgeItemInput:
+      type: object
+      required: [user_id, product_name, expiration_date, quantity]
+      properties:
+        user_id:
+          type: integer
+        product_name:
+          type: string
+        expiration_date:
+          type: string
+          format: date
+        quantity:
+          type: number
+
+    NotifyExpiredResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        expired_products:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              expiration_date:
+                type: string
+                format: date
+
+    DeleteExpiredResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    SuggestRecipesResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        recipes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recipe'
+
+    RecommendRecipesResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        recipes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recipe'
