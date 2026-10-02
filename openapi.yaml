@@ -5,10 +5,9 @@ info:
   description: >
     API Flask-приложения для рецептов, холодильника, аллергий/предпочтений,
     JWT-авторизации и уведомлений о просроченных продуктах.
-servers:
-  - url: http://localhost:5000
-    description: Local development server
-
+  servers:
+  - url: http://localhost:${BACKEND_PORT:-8000}
+    description: Backend (Docker)
 tags:
   - name: System
   - name: Auth

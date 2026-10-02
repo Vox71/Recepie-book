@@ -47,7 +47,7 @@ services:
     depends_on:
       - backend
 
-   swagger:
+  swagger:
     image: swaggerapi/swagger-ui:latest
     container_name: swagger_ui
     restart: always
