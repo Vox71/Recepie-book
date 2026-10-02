@@ -7,7 +7,17 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      DB_USER: ${{ vars.DB_USER }}
+      DB_NAME: ${{ vars.DB_NAME }}
+      DB_PORT: ${{ vars.DB_PORT }}
+      BACKEND_PORT: ${{ vars.BACKEND_PORT }}
+      FRONTEND_PORT: ${{ vars.FRONTEND_PORT }}
+      SWAGGER_PORT: ${{ vars.SWAGGER_PORT }}
 
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      FLASK_SECRET_KEY: ${{ secrets.FLASK_SECRET_KEY }}
+      
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
