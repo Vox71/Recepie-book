@@ -25,18 +25,35 @@ jobs:
       - name: Create .env file
         run: |
          cat > .env << EOF
-         POSTGRES_USER=${{ env.DB_USER }}
-         DB_NAME=${{ env.DB_NAME }}
-         DB_PORT=${{ env.DB_PORT }}
-         BACKEND_PORT=${{ env.BACKEND_PORT }}
-         FRONTEND_PORT=${{ env.FRONTEND_PORT }}
-         SWAGGER_PORT=${{ env.SWAGGER_PORT }}
-         DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-         FLASK_SECRET_KEY=${{ secrets.FLASK_SECRET_KEY }}
+         DB_USER=${DB_USER:-postgres}
+         DB_PASSWORD=${DB_PASSWORD:-changeme}
+         DB_NAME=${DB_NAME:-mydatabase}
+         DB_PORT=${DB_PORT:-5432}
+         BACKEND_PORT=${BACKEND_PORT:-8000}
+         FRONTEND_PORT=${FRONTEND_PORT:-3000}
+         SWAGGER_PORT=${SWAGGER_PORT:-8080}
+         FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-changeme}
+         JWT_SECRET=$(openssl rand -hex 32)
+         CORS_ORIGINS=http://localhost:${FRONTEND_PORT:-3000}
+         AUTO_INIT_SCHEMA=true
          EOF
     
       - name: Run Docker Compose
         run: docker compose up -d
 
       - name: Check running containers
-        run: docker ps
+        run: docker compose ps -a
+
+      - name: Smoke test the backend (health + database readiness)
+        run: |
+          for attempt in $(seq 1 40); do
+            if curl -fsS "http://localhost:${BACKEND_PORT:-8000}/ready"; then
+              echo "Backend is up and the database is reachable"
+              curl -fsS "http://localhost:${BACKEND_PORT:-8000}/health"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Backend did not become ready, container logs:"
+          docker compose logs --tail=100 backend db
+          exit 1
