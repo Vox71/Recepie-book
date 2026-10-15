@@ -63,6 +63,8 @@ ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
+Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
+
 ### CI (GitHub Actions)
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
