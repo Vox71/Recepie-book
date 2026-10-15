@@ -63,6 +63,16 @@ ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
+### CI (GitHub Actions)
+
+- **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
+  Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
+  и `python -m pytest` (76 тестов, DB-часть идёт против сервисной базы `recipes_test`).
+  Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
+  (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).
+- **Docker-пайплайн** (`.github/workflows/docker-image.yml`) — на push в `main`: сборка образов,
+  `docker compose up -d` и smoke-проверка `/ready` + `/health`.
+
 ### Отличия от CONTRIBUTION.md, зафиксированные в коде
 
 Контракт `openapi.yaml` приоритетнее внутренних правил, поэтому осознанно сохранены:
