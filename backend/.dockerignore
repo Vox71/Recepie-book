@@ -1,0 +1,10 @@
+# Keep the build context small and secrets out of the image (CONTRIBUTION.md §14).
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+tests/

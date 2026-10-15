@@ -31,6 +31,36 @@ paths:
                 type: string
                 example: Welcome to the recipe app!
 
+  /health:
+    get:
+      tags: [System]
+      summary: Liveness-проба (без обращения к БД)
+      responses:
+        '200':
+          description: Приложение работает
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /ready:
+    get:
+      tags: [System]
+      summary: Readiness-проба (проверка соединения с БД)
+      responses:
+        '200':
+          description: Приложение готово принимать трафик
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '503':
+          description: База данных недоступна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+
   /register:
     post:
       tags: [Auth]
@@ -318,7 +348,7 @@ paths:
       summary: Удалить все просроченные продукты из fridge_items
       description: >
         Удаляет просроченные продукты всех пользователей, а не только текущего.
-        В коде есть потенциальная ошибка с datetime.date.today().
+        Просроченным считается продукт, у которого expiration_date меньше текущей даты.
       responses:
         '200':
           description: Просроченные продукты удалены
@@ -366,6 +396,23 @@ components:
       properties:
         message:
           type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ReadyResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ready
+        database:
+          type: string
+          example: ok
 
     RegisterRequest:
       type: object
