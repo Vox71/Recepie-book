@@ -1,12 +1,12 @@
-"""Tests for ``/notify_expired``, ``/delete_expired``, ``/suggest_recipes`` and
-``/recommend_recipes``."""
+"""``/notify_expired``, ``/delete_expired``, ``/suggest_recipes``, ``/recommend_recipes``.
+
+All four routes require a JWT token: the user is taken from the token and never
+from the request body.
+"""
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-
-import jwt
-import pytest
+from datetime import date, timedelta
 
 YESTERDAY = date.today() - timedelta(days=1)
 TOMORROW = date.today() + timedelta(days=1)
@@ -15,114 +15,132 @@ MILK_RECIPE = {
     "name": "Milk soup",
     "ingredients": "milk, sugar, rice",
     "instructions": "Cook everything together.",
-    "cuisine_type": "russian",
     "difficulty_level": "easy",
 }
 PEANUT_RECIPE = {
     "name": "Peanut cookies",
     "ingredients": "peanuts, flour, sugar",
     "instructions": "Bake the cookies.",
-    "cuisine_type": "american",
     "difficulty_level": "medium",
 }
 
 
-@pytest.mark.parametrize("path", ["/notify_expired", "/suggest_recipes", "/recommend_recipes"])
-def test_get_endpoints_require_a_token(client, path):
-    assert client.get(path).status_code == 401
-    assert client.get(path, headers={"Authorization": "Bearer invalid"}).status_code == 401
+def _auth(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
 
 
-def test_delete_expired_requires_a_token(client):
-    assert client.delete("/delete_expired").status_code == 401
+def test_all_four_routes_require_a_token(client):
+    for method, path in [
+        ("get", "/notify_expired"),
+        ("delete", "/delete_expired"),
+        ("get", "/suggest_recipes"),
+        ("get", "/recommend_recipes"),
+    ]:
+        call = getattr(client, method)
+        assert call(path).status_code == 401, path
+        assert call(path, headers=_auth("not-a-valid-token")).status_code == 401, path
 
 
-def test_notify_expired_without_products(db_client, auth_headers):
-    response = db_client.get("/notify_expired", headers=auth_headers())
-    assert response.status_code == 200
-    assert response.get_json() == {"message": "No expired products found"}
-
-
-def test_notify_expired_lists_the_products(db_client, register_user, add_fridge_items):
+def test_notify_expired_lists_only_expired_products(db_client, register_user, add_fridge_items):
     user_id, token = register_user()
+
+    empty = db_client.get("/notify_expired", headers=_auth(token))
+    assert empty.status_code == 200
+    assert empty.get_json() == {"message": "No expired products found"}
+
     add_fridge_items(user_id, "sour milk", YESTERDAY)
     add_fridge_items(user_id, "fresh bread", TOMORROW)
 
-    response = db_client.get("/notify_expired", headers={"Authorization": f"Bearer {token}"})
+    response = db_client.get("/notify_expired", headers=_auth(token))
     assert response.status_code == 200
-
     body = response.get_json()
-    assert body["message"]
     assert [product["name"] for product in body["expired_products"]] == ["sour milk"]
     expired = body["expired_products"][0]
     assert expired["expiration_date"] == YESTERDAY.isoformat()
     assert isinstance(expired["id"], int)
 
 
-def test_delete_expired_touches_only_the_current_user(db_client, register_user, add_fridge_items):
+def test_delete_expired_touches_only_the_user_from_the_token(
+    db_client, register_user, add_fridge_items
+):
     first, first_token = register_user(email="first@example.com")
     second, _ = register_user(email="second@example.com")
     add_fridge_items(first, "old milk", YESTERDAY)
     add_fridge_items(second, "old bread", YESTERDAY)
 
-    response = db_client.delete(
-        "/delete_expired", headers={"Authorization": f"Bearer {first_token}"}
-    )
+    response = db_client.delete("/delete_expired", headers=_auth(first_token))
     assert response.status_code == 200
-    assert response.get_json()["message"] == "Deleted 1 expired product(s)"
+    assert response.get_json() == {"message": "Deleted 1 expired product(s)"}
 
     remaining = [item["product_name"] for item in db_client.get("/fridge_items").get_json()]
     assert remaining == ["old bread"]
 
 
-def test_suggest_recipes_uses_expired_products(db_client, register_user, add_fridge_items):
+def test_suggest_recipes_uses_the_expired_products(db_client, register_user, add_fridge_items, db):
     user_id, token = register_user()
     db_client.post("/recipes", json=MILK_RECIPE)
     db_client.post("/recipes", json=PEANUT_RECIPE)
+
+    # Nothing expired yet: the answer has no recipes at all.
+    empty = db_client.get("/suggest_recipes", headers=_auth(token))
+    assert empty.status_code == 200
+    assert empty.get_json() == {"message": "No expired products found, nothing to suggest"}
+
     add_fridge_items(user_id, "milk", YESTERDAY)
 
-    response = db_client.get("/suggest_recipes", headers={"Authorization": f"Bearer {token}"})
+    response = db_client.get("/suggest_recipes", headers=_auth(token))
     assert response.status_code == 200
     body = response.get_json()
+    assert body["message"]
+    # Only the recipe whose ingredients mention the expired product is offered.
     assert [recipe["name"] for recipe in body["recipes"]] == ["Milk soup"]
-    assert body["message"]
+
+    # generated_recipes keeps what was offered (docs/db_scheme.png).
+    rows = db.fetch_all(
+        """
+        SELECT r.recipe_name
+        FROM generated_recipes AS g
+        JOIN recipes AS r ON r.id = g.recipes_id
+        WHERE g.user_id = %s
+        """,
+        (user_id,),
+    )
+    assert [row["recipe_name"] for row in rows] == ["Milk soup"]
 
 
-def test_suggest_recipes_without_expired_products(db_client, auth_headers):
-    response = db_client.get("/suggest_recipes", headers=auth_headers())
-    assert response.status_code == 200
-    body = response.get_json()
-    assert body["message"]
-    assert "recipes" not in body
-
-
-def test_recommend_recipes_skips_allergy_ingredients(db_client, register_user, add_fridge_items):
+def test_recommend_recipes_uses_the_fridge_and_skips_the_allergies(
+    db_client, register_user, add_fridge_items, db
+):
     user_id, token = register_user()
     db_client.post("/recipes", json=MILK_RECIPE)
     db_client.post("/recipes", json=PEANUT_RECIPE)
-    db_client.post(
-        "/user_preferences",
-        json={"user_id": user_id, "allergies": ["peanuts"], "preferences": []},
-    )
+    db_client.post("/user_preferences", json={"user_id": user_id, "allergies": ["peanuts"]})
     add_fridge_items(user_id, "milk", TOMORROW)
 
-    response = db_client.get("/recommend_recipes", headers={"Authorization": f"Bearer {token}"})
+    response = db_client.get("/recommend_recipes", headers=_auth(token))
     assert response.status_code == 200
     body = response.get_json()
+    assert body["message"]
+    # Peanut cookies are excluded because of the allergy, Milk soup matches the fridge.
     assert [recipe["name"] for recipe in body["recipes"]] == ["Milk soup"]
 
-
-def test_recommend_recipes_with_an_empty_fridge(db_client, auth_headers):
-    response = db_client.get("/recommend_recipes", headers=auth_headers())
-    assert response.status_code == 200
-    assert response.get_json()["recipes"] == []
-
-
-def test_recommend_recipes_rejects_a_token_of_an_unknown_user(db_client, jwt_secret):
-    token = jwt.encode(
-        {"sub": "424242", "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
-        jwt_secret,
-        algorithm="HS256",
+    # The offered recipes are stored in generated_recipes.
+    rows = db.fetch_all(
+        "SELECT recipes_id, generated_on FROM generated_recipes WHERE user_id = %s", (user_id,)
     )
-    response = db_client.get("/recommend_recipes", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 401
+    assert len(rows) == 1
+    assert rows[0]["recipes_id"] is not None
+    assert rows[0]["generated_on"] is not None
+
+    # An empty fridge gives an empty list, an unknown user gives 401.
+    empty_user_id, empty_token = register_user(email="empty@example.com")
+    assert empty_user_id != user_id
+    empty = db_client.get("/recommend_recipes", headers=_auth(empty_token))
+    assert empty.status_code == 200
+    assert empty.get_json()["recipes"] == []
+
+    # Allergies written straight into users.allergies (no normalized rows) still count.
+    db.execute("UPDATE users SET allergies = %s WHERE id = %s", ("peanuts", empty_user_id))
+    add_fridge_items(empty_user_id, "milk", TOMORROW)
+    fallback = db_client.get("/recommend_recipes", headers=_auth(empty_token))
+    assert [recipe["name"] for recipe in fallback.get_json()["recipes"]] == ["Milk soup"]

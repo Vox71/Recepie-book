@@ -420,19 +420,25 @@ components:
       properties:
         username:
           type: string
+          maxLength: 80
         email:
           type: string
           format: email
+          maxLength: 120
         password:
           type: string
           format: password
+          minLength: 8
         allergies:
           type: string
           nullable: true
-          description: В /register передаётся как есть; в БД может быть строкой/JSON.
+          description: >-
+            Термины через запятую. В БД хранится как users.allergies (text) и
+            отдельными строками в user_allergy_preferences.
         preferences:
           type: string
           nullable: true
+          description: Термины через запятую; в БД хранится как users.preferences (text).
 
     RegisterResponse:
       type: object
@@ -489,29 +495,33 @@ components:
           type: integer
         name:
           type: string
+          maxLength: 200
+          description: Колонка recipes.recipe_name (varchar(200)).
         ingredients:
           type: string
         instructions:
           type: string
-        cuisine_type:
-          type: string
+          maxLength: 100
+          description: Колонка recipes.instruction (varchar(100)).
         difficulty_level:
           type: string
+          maxLength: 50
 
     RecipeInput:
       type: object
-      required: [name, ingredients, instructions, cuisine_type, difficulty_level]
+      required: [name, ingredients, instructions, difficulty_level]
       properties:
         name:
           type: string
+          maxLength: 200
         ingredients:
           type: string
         instructions:
           type: string
-        cuisine_type:
-          type: string
+          maxLength: 100
         difficulty_level:
           type: string
+          maxLength: 50
 
     FridgeItem:
       type: object
@@ -526,7 +536,7 @@ components:
           type: string
           format: date
         quantity:
-          type: number
+          type: integer
         last_added:
           type: string
           format: date-time
@@ -539,11 +549,14 @@ components:
           type: integer
         product_name:
           type: string
+          maxLength: 100
         expiration_date:
           type: string
           format: date
         quantity:
-          type: number
+          type: integer
+          minimum: 1
+          description: Колонка fridge_items.quantity (integer, CHECK (quantity > 0)).
 
     NotifyExpiredResponse:
       type: object

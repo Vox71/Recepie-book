@@ -9,6 +9,7 @@ from ..config import Settings
 from ..db import Database
 from ..errors import Unauthorized
 from ..models import fridge as fridge_model
+from ..models import generated as generated_model
 from ..models import recipes as recipes_model
 from ..models import users as users_model
 from ..serializers import serialize_recipe
@@ -32,6 +33,7 @@ def suggest_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     )
     if not found:
         return {"message": "No recipes found for your expired products"}
+    generated_model.record_generated(db, user_id, [int(row["id"]) for row in found])
     return {
         "message": f"Found {len(found)} recipe(s) to use up your expired products",
         "recipes": [serialize_recipe(row) for row in found],
@@ -51,7 +53,9 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
             "recipes": [],
         }
 
-    allergies = parse_terms(user["allergies"])
+    # The normalized table is the source of truth (docs/db_scheme.png); the text
+    # column is kept as a fallback for rows written outside /user_preferences.
+    allergies = users_model.list_user_allergies(db, user_id) or parse_terms(user["allergies"])
     preferences = parse_terms(user["preferences"])
     candidates = [
         row
@@ -69,6 +73,7 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
         return {"message": "No recipes matching your fridge were found", "recipes": []}
 
     selected = matched[: settings.recommendations_limit]
+    generated_model.record_generated(db, user_id, [int(row["id"]) for row, _ in selected])
     return {
         "message": f"Recommended {len(selected)} recipe(s) based on your fridge, "
         "allergies and preferences",

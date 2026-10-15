@@ -6,7 +6,7 @@ from typing import Sequence
 
 from ..db import Database
 
-RECIPE_COLUMNS = "id, name, ingredients, instructions, cuisine_type, difficulty_level"
+RECIPE_COLUMNS = "id, recipe_name, ingredients, instruction, difficulty_level"
 
 
 def list_recipes(db: Database) -> list[dict]:
@@ -17,15 +17,14 @@ def list_recipes(db: Database) -> list[dict]:
 def create_recipe(db: Database, data: dict) -> int:
     """Insert a recipe and return the generated id."""
     sql = """
-        INSERT INTO recipes (name, ingredients, instructions, cuisine_type, difficulty_level)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO recipes (recipe_name, ingredients, instruction, difficulty_level)
+        VALUES (%s, %s, %s, %s)
         RETURNING id
     """
     params = (
         data["name"],
         data["ingredients"],
         data["instructions"],
-        data["cuisine_type"],
         data["difficulty_level"],
     )
     row = db.fetch_one(sql, params)
@@ -42,14 +41,13 @@ def update_recipe(db: Database, recipe_id: int, data: dict) -> bool:
     """Overwrite a recipe; ``False`` when the recipe does not exist."""
     sql = """
         UPDATE recipes
-        SET name = %s, ingredients = %s, instructions = %s, cuisine_type = %s, difficulty_level = %s
+        SET recipe_name = %s, ingredients = %s, instruction = %s, difficulty_level = %s
         WHERE id = %s
     """
     params = (
         data["name"],
         data["ingredients"],
         data["instructions"],
-        data["cuisine_type"],
         data["difficulty_level"],
         recipe_id,
     )
@@ -69,7 +67,7 @@ def find_recipes_with_ingredients(
         SELECT {RECIPE_COLUMNS}
         FROM recipes
         WHERE ingredients ILIKE ANY(%s)
-        ORDER BY name
+        ORDER BY recipe_name
         LIMIT %s
     """
     return db.fetch_all(sql, (list(patterns), limit))

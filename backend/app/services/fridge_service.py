@@ -12,9 +12,9 @@ from ..models import fridge as fridge_model
 from ..models import users as users_model
 from ..serializers import serialize_fridge_item
 from ..validation import (
+    MAX_PRODUCT_NAME_LENGTH,
     require_date,
     require_positive_int,
-    require_positive_number,
     require_string,
 )
 
@@ -65,9 +65,9 @@ def _validated_item(raw: object, index: int) -> dict:
     try:
         return {
             "user_id": require_positive_int(raw, "user_id"),
-            "product_name": require_string(raw, "product_name"),
+            "product_name": require_string(raw, "product_name", max_length=MAX_PRODUCT_NAME_LENGTH),
             "expiration_date": require_date(raw, "expiration_date"),
-            "quantity": require_positive_number(raw, "quantity"),
+            "quantity": require_positive_int(raw, "quantity"),
         }
     except BadRequest as exc:
         raise BadRequest(f"Invalid item #{index}: {exc.message}") from exc

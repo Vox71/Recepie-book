@@ -1,98 +1,122 @@
-"""Recipe CRUD contract tests: ``/recipes`` and ``/recipes/{id}``."""
+"""Recipes: ``/recipes`` (list, create) and ``/recipes/{id}`` (read, update, delete).
+
+The database columns are ``recipe_name`` and ``instruction`` (docs/db_scheme.png)
+while the API keeps the names of openapi.yaml (``name``/``instructions``); the
+serializers translate between the two.
+"""
 
 from __future__ import annotations
 
-import pytest
-
-RECIPE_PAYLOAD = {
+RECIPE = {
     "name": "Tomato pasta",
     "ingredients": "pasta, tomato, cheese, olive oil",
     "instructions": "Boil the pasta, mix with tomato and cheese.",
-    "cuisine_type": "italian",
+    "difficulty_level": "easy",
+}
+SOUP = {
+    "name": "Spinach soup",
+    "ingredients": "spinach, water, onion",
+    "instructions": "Boil the spinach with the onion.",
     "difficulty_level": "easy",
 }
 
 
-@pytest.mark.parametrize(
-    "missing_field",
-    ["name", "ingredients", "instructions", "cuisine_type", "difficulty_level"],
-)
-def test_create_recipe_requires_all_fields(db_client, missing_field):
-    payload = {key: value for key, value in RECIPE_PAYLOAD.items() if key != missing_field}
-    response = db_client.post("/recipes", json=payload)
-    assert response.status_code == 400
-    assert missing_field in response.get_json()["error"]
+def _create(client, payload: dict = RECIPE) -> dict:
+    """Create a recipe through the API and return the stored JSON object."""
+    response = client.post("/recipes", json=payload)
+    assert response.status_code == 201, response.get_json()
+    names = {recipe["name"]: recipe for recipe in client.get("/recipes").get_json()}
+    return names[payload["name"]]
 
 
-def test_create_recipe_rejects_wrong_types(db_client):
-    response = db_client.post("/recipes", json={**RECIPE_PAYLOAD, "name": ["not", "a", "string"]})
-    assert response.status_code == 400
-
-
-def test_create_recipe_does_not_require_a_token(db_client):
-    """openapi.yaml documents that token checking is disabled for ``POST /recipes``."""
-    response = db_client.post("/recipes", json=RECIPE_PAYLOAD)
+def test_create_recipe_stores_it_under_the_database_column_names(db_client, db):
+    response = db_client.post("/recipes", json=RECIPE)
     assert response.status_code == 201
     assert "message" in response.get_json()
 
-
-def test_create_and_read_recipes(db_client):
-    assert db_client.post("/recipes", json=RECIPE_PAYLOAD).status_code == 201
-
-    listed = db_client.get("/recipes")
-    assert listed.status_code == 200
-    recipes = listed.get_json()
-    assert len(recipes) == 1
-    recipe = recipes[0]
-    assert recipe == {"id": recipe["id"], **RECIPE_PAYLOAD}
-    assert isinstance(recipe["id"], int)
-
-    fetched = db_client.get(f"/recipes/{recipe['id']}")
-    assert fetched.status_code == 200
-    assert fetched.get_json() == recipe
+    row = db.fetch_one(
+        "SELECT recipe_name, ingredients, instruction, difficulty_level FROM recipes"
+    )
+    assert row == {
+        "recipe_name": RECIPE["name"],
+        "ingredients": RECIPE["ingredients"],
+        "instruction": RECIPE["instructions"],
+        "difficulty_level": RECIPE["difficulty_level"],
+    }
 
 
-def test_get_unknown_recipe_returns_404(db_client):
-    response = db_client.get("/recipes/424242")
-    assert response.status_code == 404
-    assert "424242" in response.get_json()["error"]
+def test_create_recipe_validates_the_payload(db_client):
+    """400 for a missing field, a wrong type or a value longer than the column."""
+    bad_payloads = [
+        {key: value for key, value in RECIPE.items() if key != missing}
+        for missing in ("name", "ingredients", "instructions", "difficulty_level")
+    ]
+    bad_payloads += [
+        {**RECIPE, "name": ["not", "a", "string"]},
+        {**RECIPE, "name": "x" * 201},  # recipes.recipe_name is varchar(200)
+        {**RECIPE, "instructions": "x" * 101},  # recipes.instruction is varchar(100)
+        {**RECIPE, "difficulty_level": "x" * 51},  # varchar(50)
+    ]
+    for payload in bad_payloads:
+        response = db_client.post("/recipes", json=payload)
+        assert response.status_code == 400, payload
+        assert "error" in response.get_json()
+
+
+def test_list_recipes_returns_every_recipe(db_client):
+    """openapi.yaml: ``POST /recipes`` is the only route without a token check."""
+    assert db_client.post("/recipes", json=RECIPE).status_code == 201
+    assert db_client.post("/recipes", json=SOUP).status_code == 201
+
+    response = db_client.get("/recipes")
+    assert response.status_code == 200
+    recipes = response.get_json()
+    assert {recipe["name"] for recipe in recipes} == {RECIPE["name"], SOUP["name"]}
+    for recipe in recipes:
+        assert isinstance(recipe["id"], int)
+        # cuisine_type was removed from docs/db_scheme.png and from openapi.yaml.
+        assert "cuisine_type" not in recipe
+
+
+def test_get_recipe_by_id(db_client):
+    recipe = _create(db_client)
+
+    response = db_client.get(f"/recipes/{recipe['id']}")
+    assert response.status_code == 200
+    assert response.get_json() == {"id": recipe["id"], **RECIPE}
+
+    unknown = db_client.get("/recipes/424242")
+    assert unknown.status_code == 404
+    assert "424242" in unknown.get_json()["error"]
 
 
 def test_update_recipe(db_client):
-    db_client.post("/recipes", json=RECIPE_PAYLOAD)
-    recipe_id = db_client.get("/recipes").get_json()[0]["id"]
+    recipe = _create(db_client)
 
-    updated_payload = {**RECIPE_PAYLOAD, "name": "Spicy pasta", "difficulty_level": "medium"}
-    response = db_client.put(f"/recipes/{recipe_id}", json=updated_payload)
+    response = db_client.put(
+        f"/recipes/{recipe['id']}",
+        json={**RECIPE, "name": "Spicy pasta", "difficulty_level": "medium"},
+    )
     assert response.status_code == 200
     assert "message" in response.get_json()
 
-    stored = db_client.get(f"/recipes/{recipe_id}").get_json()
+    stored = db_client.get(f"/recipes/{recipe['id']}").get_json()
     assert stored["name"] == "Spicy pasta"
     assert stored["difficulty_level"] == "medium"
+    assert stored["ingredients"] == RECIPE["ingredients"]
 
-
-def test_update_recipe_validates_the_body(db_client):
-    db_client.post("/recipes", json=RECIPE_PAYLOAD)
-    recipe_id = db_client.get("/recipes").get_json()[0]["id"]
-    assert db_client.put(f"/recipes/{recipe_id}", json={"name": "only name"}).status_code == 400
-
-
-def test_update_unknown_recipe_returns_404(db_client):
-    response = db_client.put("/recipes/424242", json=RECIPE_PAYLOAD)
-    assert response.status_code == 404
+    # The body is validated and an unknown id is a 404.
+    assert db_client.put(f"/recipes/{recipe['id']}", json={"name": "only name"}).status_code == 400
+    assert db_client.put("/recipes/424242", json=RECIPE).status_code == 404
 
 
 def test_delete_recipe(db_client):
-    db_client.post("/recipes", json=RECIPE_PAYLOAD)
-    recipe_id = db_client.get("/recipes").get_json()[0]["id"]
+    recipe = _create(db_client)
 
-    deleted = db_client.delete(f"/recipes/{recipe_id}")
-    assert deleted.status_code == 200
-    assert "message" in deleted.get_json()
-    assert db_client.get(f"/recipes/{recipe_id}").status_code == 404
+    response = db_client.delete(f"/recipes/{recipe['id']}")
+    assert response.status_code == 200
+    assert "message" in response.get_json()
+
+    assert db_client.get(f"/recipes/{recipe['id']}").status_code == 404
     assert db_client.get("/recipes").get_json() == []
-
-
-def test_delete_unknown_recipe_returns_404(db_client):
     assert db_client.delete("/recipes/424242").status_code == 404

@@ -17,7 +17,10 @@ from app.config import Settings
 
 TEST_JWT_SECRET = "test-jwt-secret-not-for-production-use"
 DEFAULT_PASSWORD = "sup3r-secret-password"
-TRUNCATE_STATEMENT = "TRUNCATE users, recipes, fridge_items RESTART IDENTITY CASCADE"
+TRUNCATE_STATEMENT = (
+    "TRUNCATE users, recipes, fridge_items, favorite_recipes, generated_recipes, "
+    "user_allergy_preferences, fridge_item_versions, fridge_item_audit RESTART IDENTITY CASCADE"
+)
 
 
 def database_url_from_env() -> str:
@@ -86,6 +89,12 @@ def db_client(db_app):
 
 
 @pytest.fixture()
+def db(db_app):
+    """Database facade of the database-backed application (for SQL assertions)."""
+    return db_app.extensions["db"]
+
+
+@pytest.fixture()
 def jwt_secret() -> str:
     """Secret used to sign tokens in tests."""
     return TEST_JWT_SECRET
@@ -119,20 +128,10 @@ def register_user(db_client):
 
 
 @pytest.fixture()
-def auth_headers(register_user):
-    """Authorization header of a freshly registered user."""
-
-    def _headers(**kwargs) -> dict:
-        return {"Authorization": f"Bearer {register_user(**kwargs)[1]}"}
-
-    return _headers
-
-
-@pytest.fixture()
 def add_fridge_items(db_client):
     """Insert one fridge item for a user through the API."""
 
-    def _add(user_id: int, product_name: str, expiration_date, quantity: float = 1) -> dict:
+    def _add(user_id: int, product_name: str, expiration_date, quantity: int = 1) -> dict:
         item = {
             "user_id": user_id,
             "product_name": product_name,

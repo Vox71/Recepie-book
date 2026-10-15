@@ -1,228 +1,186 @@
 # Чек-лист тестов API
 
-Файл для отчётности по спринту: полный перечень автоматических тестов backend
-(`backend/tests/`, `pytest`) и ожидаемое поведение каждого кейса.
+Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
+(`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** 53 тестовые функции, **76 кейсов** (28 кейсов получены параметризацией),
-46 кейсов работают с реальной PostgreSQL, 30 — контрактные (без БД).
+**Состав набора:** **36 кейсов в 7 файлах**. 11 кейсов работают без базы (проверка входных
+данных, работа с токеном, служебные адреса), 25 — против реальной PostgreSQL (включая саму
+схему БД). На каждый адрес из `openapi.yaml` приходится 1–2 кейса.
 
 ## Как запускать
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 30 passed, 46 skipped (DB-тесты скипаются)
+python -m pytest                 # без БД: 11 passed, 25 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 76 passed
+                                 # с БД: 36 passed
 ```
 
-То же самое автоматически выполняется в CI: workflow `Backend CI`
-(`.github/workflows/backend-tests.yml`) поднимает PostgreSQL 15 и запускает
-`python -m pytest` на каждый push в `main` и на каждый pull request.
+То же самое автоматически выполняет CI: workflow `Backend CI`
+(`.github/workflows/backend-tests.yml`) поднимает PostgreSQL 15 и запускает `python -m pytest`
+на каждый push в `main` и на каждый pull request.
 
-## Итог прогона (последняя проверка)
+## Итог последнего прогона
 
-| Файл | Кейсов | Функций | С БД | Статус |
+| Файл | Кейсов | Без БД | С БД | Тема |
 |---|---|---|---|---|
-| `tests/test_auth.py` | 20 | 15 | 7 | ✅ passed |
-| `tests/test_recipes.py` | 14 | 10 | 14 | ✅ passed |
-| `tests/test_fridge.py` | 14 | 7 | 14 | ✅ passed |
-| `tests/test_notifications_recommendations.py` | 12 | 10 | 8 | ✅ passed |
-| `tests/test_user_preferences.py` | 9 | 4 | 2 | ✅ passed |
-| `tests/test_system.py` | 7 | 7 | 1 | ✅ passed |
-| **Всего** | **76** | **53** | **46** | ✅ **76 passed, 0 failed, 0 skipped** |
+| `tests/test_system.py` | 6 | 5 | 1 | служебные адреса, список маршрутов, формат ошибок |
+| `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
+| `tests/test_recipes.py` | 6 | 0 | 6 | CRUD рецептов |
+| `tests/test_fridge.py` | 3 | 0 | 3 | холодильник и удаление просроченного |
+| `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
+| `tests/test_notifications_recommendations.py` | 5 | 1 | 4 | уведомления и рекомендации |
+| `tests/test_database.py` | 8 | 0 | 8 | схема БД, ограничения, триггеры, таблицы без адресов |
+| **Всего** | **36** | **11** | **25** | |
 
-Проверено 15.10.2026 на этом же коде: с живым PostgreSQL — `76 passed, 0 skipped` (exit 0, ~5 с);
-без БД — `30 passed, 46 skipped` (exit 0); `ruff check .` и `black --check .` — без замечаний.
+Проверено 15.10.2026 на этом коде: без БД — `11 passed, 25 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Полный прогон (`36 passed, 0 skipped`)
+выполняет CI на PostgreSQL 15: там доступность базы контролируется отдельным шагом,
+поэтому набор не может «позеленеть» на одних пропусках.
 
-## Покрытие эндпоинтов (CONTRIBUTION.md §10)
+## Покрытие эндпоинтов: 19 адресов, 1–2 кейса на адрес
 
-| Эндпоинт | Успешный сценарий | Негативные сценарии |
+| Адрес | Кейсы | Что проверяется |
 |---|---|---|
-| `GET /` | ✅ 200, текстовое приветствие | — (общий обработчик 404/405 проверен на других маршрутах) |
-| `GET /health` | ✅ 200 `{"status":"ok"}` без БД | — (liveness не зависит от БД) |
-| `GET /ready` | ✅ 200 `{"database":"ok"}` | ✅ 503 `{"database":"unavailable"}` |
-| `POST /register` | ✅ 201, строки и списки в `allergies`/`preferences` | ✅ 400 ×7 (тело и валидация полей), 400 дубликат email, 400 дубликат username |
-| `POST /login` | ✅ 200 + `token` | ✅ 400 нет email/password, 401 неизвестный пользователь, 401 неверный пароль |
-| `GET /protected` | ✅ 200 `{"message","user_id"}` | ✅ 401 в 4 тестах (6 проверок): нет заголовка, схема не Bearer, пустой токен, битый токен, просроченный, без `sub` |
-| `POST /user_preferences` | ✅ 200 + запись проверена SQL-запросом | ✅ 400 ×7 (валидация тела), 400 неизвестный `user_id` |
-| `POST /recipes` | ✅ 201 | ✅ 400 ×6 (нет обязательного поля ×5, неверный тип) |
-| `GET /recipes` | ✅ 200 список, состав полей | ✅ 404 для несуществующего id |
-| `GET /recipes/{id}` | ✅ 200 одиночный рецепт | ✅ 404 |
-| `PUT /recipes/{id}` | ✅ 200 + изменение сохранено | ✅ 400 неполное тело, 404 |
-| `DELETE /recipes/{id}` | ✅ 200 + рецепт исчез, список пуст | ✅ 404 |
-| `POST /fridge_items` | ✅ 201 | ✅ 400 ×10 (8 некорректных тел, пустой список, неизвестный пользователь) |
-| `GET /fridge_items` | ✅ 200, поля item | — (по `openapi.yaml` маршрут без токена, негативных кейсов нет) |
-| `DELETE /delete_expired_products` | ✅ 200, только просроченные, повторный вызов идемпотентен | — |
-| `GET /notify_expired` | ✅ 200 со списком просроченного, 200 при пустом холодильнике | ✅ 401 ×2 (нет токена, битый токен) |
-| `DELETE /delete_expired` | ✅ 200, удаляет только продукты текущего пользователя | ✅ 401 |
-| `GET /suggest_recipes` | ✅ 200 рецепт из просроченных продуктов, 200 без просроченных | ✅ 401 ×2 |
-| `GET /recommend_recipes` | ✅ 200, аллергены исключены, 200 при пустом холодильнике | ✅ 401 ×2, 401 токен неизвестного пользователя |
-| Неизвестный путь | — | ✅ 404 в формате `{"error": ...}` |
-| Недопустимый метод (`DELETE /login`) | — | ✅ 405 в формате `{"error": ...}` |
+| `GET /` | `test_index_returns_the_greeting` | 200 и текст приветствия из контракта |
+| `GET /health` | `test_health_is_ok_without_a_database` | 200 `{"status":"ok"}` без обращения к БД |
+| `GET /ready` | `test_ready_reports_a_missing_database`, `test_ready_reports_a_healthy_database` | 503 «база недоступна» и 200 «база ok» |
+| `POST /register` | `test_register_creates_a_user`, `test_register_rejects_invalid_payloads` | 201 + пароль scrypt-хэшем + нормализация аллергий + отказ на дубликаты; 400 на 9 «плохих» тел и не-JSON |
+| `POST /login` | `test_login_returns_a_token`, `test_login_requires_email_and_password` | 401 на неверный пароль и неизвестный email, 200 + `token`; 400 без email/password |
+| `GET /protected` | `test_protected_accepts_a_valid_token`, `test_protected_rejects_bad_tokens` | 200 с `user_id` из токена; 401 в 6 вариантах (нет заголовка, чужая схема, пустой/битый/просроченный токен, без `sub`) |
+| `POST /user_preferences` | `test_preferences_are_stored_normalized_and_cleared`, `test_user_preferences_validation` | 200 + запись в `users` и `user_allergy_preferences` (замена без дублей, очистка), 400 на неизвестный `user_id`; 400 на 6 некорректных тел |
+| `GET /recipes` | `test_list_recipes_returns_every_recipe` | 200, список рецептов, отсутствие удалённого `cuisine_type` |
+| `POST /recipes` | `test_create_recipe_stores_it_under_the_database_column_names`, `test_create_recipe_validates_the_payload` | 201 + запись в колонки `recipe_name`/`instruction`; 400 на 8 некорректных тел |
+| `GET /recipes/{id}` | `test_get_recipe_by_id` | 200 с телом рецепта, 404 на неизвестный id |
+| `PUT /recipes/{id}` | `test_update_recipe` | 200, изменение сохранено; 400 на неполное тело, 404 на неизвестный id |
+| `DELETE /recipes/{id}` | `test_delete_recipe` | 200, рецепт исчез из списка; 404 на неизвестный id |
+| `GET /fridge_items` | `test_add_and_list_fridge_items` | 200, поля продукта, `id` = `fridge_items.item_id` |
+| `POST /fridge_items` | `test_add_and_list_fridge_items`, `test_add_fridge_items_validates_the_payload` | 201 + сохранение батча; 400 на 10 некорректных тел (включая `quantity = 0` и неизвестного пользователя) |
+| `DELETE /delete_expired_products` | `test_delete_expired_products_removes_only_expired_items` | удаляются только просроченные, повторный вызов безопасен |
+| `GET /notify_expired` | `test_notify_expired_lists_only_expired_products` | пустой холодильник и список просроченных продуктов |
+| `DELETE /delete_expired` | `test_delete_expired_touches_only_the_user_from_the_token` | удаляются продукты только того пользователя, чей токен |
+| `GET /suggest_recipes` | `test_suggest_recipes_uses_the_expired_products` | подсказки по просроченным продуктам + запись в `generated_recipes` |
+| `GET /recommend_recipes` | `test_recommend_recipes_uses_the_fridge_and_skips_the_allergies` | рекомендации по холодильнику без аллергенов, история выдачи, пустой холодильник, аллергии из текстовой колонки |
 
-## Чек-лист по файлам
+## Что проверяет каждый файл
 
-Обозначения: `[x]` — кейс есть в наборе и проходит; **(БД)** — выполняется против реальной
-PostgreSQL; **(контракт)** — выполняется на приложении без БД (валидация, авторизация, пробы).
-Идентификаторы совпадают с выводом `pytest -v`. Параметризованные функции оформлены строкой-группой
-без чекбокса, а каждый параметризованный кейс — отдельным чекбоксом, поэтому **число `[x]` в файле
-равно числу тестов (76)**.
+### `tests/test_system.py` — 6 кейсов (5 без БД)
 
-### `tests/test_auth.py` — авторизация (20 кейсов)
+- [x] `test_index_returns_the_greeting` — `GET /` → 200, `text/plain`, точный текст приветствия.
+- [x] `test_health_is_ok_without_a_database` — liveness-проба работает без базы (200).
+- [x] `test_ready_reports_a_missing_database` — readiness-проба без базы → 503 `{"database":"unavailable"}`.
+- [x] `test_ready_reports_a_healthy_database` — с базой → 200 `{"database":"ok"}`.
+- [x] `test_registered_routes_match_the_contract` — в приложении зарегистрированы ровно 19 адресов
+  и их HTTP-методы из `openapi.yaml` (плюс `/health` и `/ready`); лишних и забытых маршрутов нет.
+- [x] `test_unknown_address_and_method_return_an_error_object` — 404 и 405 отдают единый
+  формат ошибки `{"error": "..."}`.
 
-**`POST /register`**
+### `tests/test_auth.py` — 6 кейсов (4 без БД)
 
-- [x] `test_register_requires_a_json_object` (контракт) — тело не является JSON → `400` + ключ `error`.
-- `test_register_rejects_invalid_payloads` (контракт) — группа из 6 кейсов, все ✅: некорректное тело → `400` + ключ `error`:
-  - [x] `[payload0]` пустое тело `{}`;
-  - [x] `[payload1]` нет `password`;
-  - [x] `[payload2]` email не по формату (`not-an-email`);
-  - [x] `[payload3]` слишком короткий пароль (`short`);
-  - [x] `[payload4]` `username` из одних пробелов;
-  - [x] `[payload5]` `allergies = 42` (не строка и не список).
-- [x] `test_register_creates_a_user` (БД) — корректная регистрация → `201`, `user_id` — целое, есть `message`.
-- [x] `test_register_accepts_string_and_list_terms` (БД) — `allergies` строкой и `preferences` списком сохраняются без изменений → `201`.
-- [x] `test_register_rejects_duplicate_email` (БД) — повторный email при другом username → `400`, в тексте ошибки есть `email`.
-- [x] `test_register_rejects_duplicate_username` (БД) — повторный username при другом email → `400`, в тексте ошибки есть `username`.
+- [x] `test_register_creates_a_user` — 201; в БД попадает scrypt-хэш (162 символа, влезает в
+  `varchar(200)`), аллергии и предпочтения сохраняются и текстом в `users`, и строками в
+  `user_allergy_preferences`; повторный email и повторный username → 400.
+- [x] `test_register_rejects_invalid_payloads` — 400 в цикле на 9 некорректных тел
+  (пустое тело, нет password, плохой email, короткий пароль, пустой username, слишком длинные
+  username/email/аллергия, аллергии не списком) + не-JSON тело.
+- [x] `test_login_returns_a_token` — неверный пароль → 401, неизвестный email → 401,
+  верные данные → 200 и непустой `token`.
+- [x] `test_login_requires_email_and_password` — 400, если не переданы email или password.
+- [x] `test_protected_accepts_a_valid_token` — 200, `user_id` строкой (как в контракте).
+- [x] `test_protected_rejects_bad_tokens` — 401 в 6 вариантах: нет заголовка, не Bearer,
+  пустой токен, не JWT, просроченный токен, токен без `sub`.
 
-**`POST /login`**
+### `tests/test_recipes.py` — 6 кейсов (все с БД)
 
-- [x] `test_login_requires_email_and_password` (контракт) — пустое тело и тело без `password` → `400`.
-- [x] `test_login_returns_token` (БД) — верные email и пароль → `200` и непустой `token`.
-- [x] `test_login_rejects_unknown_user` (БД) — незарегистрированный email → `401` + ключ `error`.
-- [x] `test_login_rejects_wrong_password` (БД) — неверный пароль → `401`.
+- [x] `test_create_recipe_stores_it_under_the_database_column_names` — 201 и запись в колонки
+  `recipe_name`, `ingredients`, `instruction`, `difficulty_level` (API-поля `name`/`instructions`
+  переводятся сериализатором).
+- [x] `test_create_recipe_validates_the_payload` — 400 на 8 тел: нет одного из четырёх
+  обязательных полей, не строка, значения длиннее колонок (`200`/`100`/`50` символов).
+- [x] `test_list_recipes_returns_every_recipe` — 200, оба созданных рецепта в списке,
+  `id` — целое, `cuisine_type` больше не отдаётся.
+- [x] `test_get_recipe_by_id` — 200 с полным телом рецепта; неизвестный id → 404.
+- [x] `test_update_recipe` — 200, изменённые поля сохранены (остальные не потеряны);
+  неполное тело → 400, неизвестный id → 404.
+- [x] `test_delete_recipe` — 200, рецепт исчез, список пуст; повторное удаление → 404.
 
-**`GET /protected`**
+### `tests/test_fridge.py` — 3 кейса (все с БД)
 
-- [x] `test_protected_requires_a_bearer_token` (контракт) — нет заголовка, схема `Token abc`, пустой `Bearer ` → `401` (3 проверки).
-- [x] `test_protected_rejects_a_malformed_token` (контракт) — `Bearer not-a-jwt` → `401`.
-- [x] `test_protected_rejects_an_expired_token` (контракт) — токен с `exp` в прошлом → `401`.
-- [x] `test_protected_rejects_a_token_without_subject` (контракт) — токен без `sub` → `401`.
-- [x] `test_protected_accepts_a_valid_token` (контракт) — валидный токен → `200` и `{"message": "Access granted", "user_id": "5"}` (`user_id` строкой по `openapi.yaml`).
+- [x] `test_add_and_list_fridge_items` — 201 и сообщение `N fridge item(s) added`; в списке
+  корректные поля, `id` ответа совпадает с `fridge_items.item_id`, `quantity` — целое.
+- [x] `test_add_fridge_items_validates_the_payload` — 400 в цикле на 10 тел: тело не массив,
+  пустой массив, элемент не объект, пустой объект, нет `quantity`, `quantity = 0` (CHECK в схеме),
+  дробное `quantity`, длинное имя продукта, дата не в ISO 8601, несуществующий `user_id`.
+- [x] `test_delete_expired_products_removes_only_expired_items` — удаляется только просроченный
+  продукт, продукт со сроком «сегодня» остаётся; повторный вызов удаляет 0 и не падает.
 
-### `tests/test_recipes.py` — рецепты (14 кейсов, все с БД)
+### `tests/test_user_preferences.py` — 2 кейса (1 без БД)
 
-**`POST /recipes`**
+- [x] `test_preferences_are_stored_normalized_and_cleared` — 200; значения попадают в
+  `users.allergies`/`preferences` текстом и в `user_allergy_preferences` строками; повторный
+  вызов заменяет старые значения без дублей; пустой список очищает и то, и другое;
+  неизвестный `user_id` → 400.
+- [x] `test_user_preferences_validation` — 400 в цикле на 6 тел (нет `user_id`, `user_id`
+  строкой или нулём, аллергии не списком, элементы не строки, пустые элементы).
 
-- `test_create_recipe_requires_all_fields` (БД) — группа из 5 кейсов, все ✅: отсутствие обязательного поля → `400`, имя поля упомянуто в тексте ошибки:
-  - [x] `[name]` — нет названия;
-  - [x] `[ingredients]` — нет ингредиентов;
-  - [x] `[instructions]` — нет инструкции;
-  - [x] `[cuisine_type]` — нет типа кухни;
-  - [x] `[difficulty_level]` — нет сложности.
-- [x] `test_create_recipe_rejects_wrong_types` — `name` передан списком → `400`.
-- [x] `test_create_recipe_does_not_require_a_token` — `POST /recipes` без JWT (по `openapi.yaml` защита отключена) → `201` + `message`.
+### `tests/test_notifications_recommendations.py` — 5 кейсов (1 без БД)
 
-**`GET /recipes`, `GET /recipes/{id}`**
+- [x] `test_all_four_routes_require_a_token` — 401 для `/notify_expired`, `/delete_expired`,
+  `/suggest_recipes`, `/recommend_recipes` без токена и с испорченным токеном.
+- [x] `test_notify_expired_lists_only_expired_products` — пустой холодильник → сообщение
+  `No expired products found`; с продуктами → в `expired_products` только просроченный.
+- [x] `test_delete_expired_touches_only_the_user_from_the_token` — удаляются продукты того
+  пользователя, чей токен; данные второго пользователя остаются.
+- [x] `test_suggest_recipes_uses_the_expired_products` — без просроченных продуктов рецептов нет;
+  с просроченным молоком предлагается только рецепт с молоком, и выдача записана в
+  `generated_recipes`.
+- [x] `test_recommend_recipes_uses_the_fridge_and_skips_the_allergies` — рецепт с аллергеном
+  исключён, рецепт из холодильника рекомендован и записан в `generated_recipes`; пустой
+  холодильник → пустой список; аллергии, записанные в `users.allergies` напрямую (без строк в
+  `user_allergy_preferences`), тоже учитываются.
 
-- [x] `test_create_and_read_recipes` — создание → `201`; список → `200`, ровно один рецепт с целочисленным `id` и всеми переданными полями; запрос по id → `200` и тот же объект.
-- [x] `test_get_unknown_recipe_returns_404` — `GET /recipes/424242` → `404`, id указан в тексте ошибки.
+### `tests/test_database.py` — 8 кейсов (все с БД)
 
-**`PUT /recipes/{id}`**
+Файл — «исполняемая» копия схемы `docs/db_scheme.png` и проверка того, что не покрыто адресами.
 
-- [x] `test_update_recipe` — обновление имени и сложности → `200` + `message`, изменения видны в `GET /recipes/{id}`.
-- [x] `test_update_recipe_validates_the_body` — тело только с `name` → `400`.
-- [x] `test_update_unknown_recipe_returns_404` — `PUT /recipes/424242` → `404`.
-
-**`DELETE /recipes/{id}`**
-
-- [x] `test_delete_recipe` — удаление → `200` + `message`; повторный `GET /recipes/{id}` → `404`; список рецептов пуст.
-- [x] `test_delete_unknown_recipe_returns_404` — `DELETE /recipes/424242` → `404`.
-
-### `tests/test_fridge.py` — холодильник (14 кейсов, все с БД)
-
-**`POST /fridge_items`**
-
-- `test_add_items_rejects_invalid_payloads` (БД) — группа из 8 кейсов, все ✅: некорректное тело → `400` + ключ `error`:
-  - [x] `[payload0]` объект вместо списка (`{"user_id": 1}`);
-  - [x] `[payload1]` элемент списка — строка, а не объект;
-  - [x] `[payload2]` пустой объект `{}` — нет обязательных полей;
-  - [x] `[payload3]` нет `quantity`;
-  - [x] `[payload4]` `quantity = 0` (нарушает `CHECK (quantity > 0)` в схеме БД);
-  - [x] `[payload5]` `expiration_date = "01.01.2026"` — не ISO 8601;
-  - [x] `[payload6]` `user_id = 0` — несуществующий пользователь;
-  - [x] `[payload7]` `product_name` из одних пробелов.
-- [x] `test_add_items_requires_at_least_one_item` — пустой список `[]` → `400`.
-- [x] `test_add_items_rejects_unknown_user` — `user_id = 999999` → `400`, id указан в тексте ошибки.
-
-**`GET /fridge_items`**
-
-- [x] `test_add_and_list_items` — добавление позиции → `201`; список → `200`, один элемент с целочисленным `id`, верными `user_id`, `product_name`, `expiration_date` (ISO), `quantity` и заполненным `last_added`.
-- [x] `test_list_items_returns_items_of_every_user` — позиции двух разных пользователей видны в общем списке (поведение зафиксировано по `openapi.yaml`).
-
-**`DELETE /delete_expired_products`**
-
-- [x] `test_delete_expired_products_removes_only_expired_items` — из трёх позиций (вчера, сегодня, завтра) удаляется только вчерашняя → `200` и `message = "Deleted 1 expired product(s)"`, остаются «fresh bread» и «expires today».
-- [x] `test_delete_expired_products_is_idempotent` — повторный вызов → `200` и `message = "Deleted 0 expired product(s)"` (регрессия на «сломанную ссылку на дату» из `openapi.yaml`).
-
-### `tests/test_notifications_recommendations.py` — уведомления и рекомендации (12 кейсов)
-
-**Требования авторизации (контрактные)**
-
-- `test_get_endpoints_require_a_token` (контракт) — группа из 3 кейсов, все ✅: без токена и с битым `Bearer invalid` → `401`:
-  - [x] `[/notify_expired]`;
-  - [x] `[/suggest_recipes]`;
-  - [x] `[/recommend_recipes]`.
-- [x] `test_delete_expired_requires_a_token` — `DELETE /delete_expired` без токена → `401`.
-
-**`GET /notify_expired`**
-
-- [x] `test_notify_expired_without_products` (БД) — пустой холодильник → `200` и `{"message": "No expired products found"}`.
-- [x] `test_notify_expired_lists_the_products` (БД) — просроченный и свежий продукты → `200`, в `expired_products` только «sour milk» с ISO-датой и целочисленным `id`.
-
-**`DELETE /delete_expired` (защищённый, работает только со своими данными)**
-
-- [x] `test_delete_expired_touches_only_the_current_user` (БД) — у двух пользователей по просроченному продукту; вызов от первого → `200` и `Deleted 1 expired product(s)`, в БД остаётся продукт второго пользователя.
-
-**`GET /suggest_recipes`**
-
-- [x] `test_suggest_recipes_uses_expired_products` (БД) — в рецептах «Milk soup» и «Peanut cookies», просрочен только `milk` → `200` и в ответе ровно `["Milk soup"]`.
-- [x] `test_suggest_recipes_without_expired_products` (БД) — просроченных продуктов нет → `200`, есть `message`, поля `recipes` в ответе нет.
-
-**`GET /recommend_recipes`**
-
-- [x] `test_recommend_recipes_skips_allergy_ingredients` (БД) — аллергия `peanuts` и свежий `milk` → `200` и в ответе только `["Milk soup"]` (рецепт с арахисом исключён).
-- [x] `test_recommend_recipes_with_an_empty_fridge` (БД) — пустой холодильник → `200` и `{"recipes": []}`.
-- [x] `test_recommend_recipes_rejects_a_token_of_an_unknown_user` (БД) — корректно подписанный токен с `sub = 424242` (пользователя нет) → `401`.
-
-### `tests/test_user_preferences.py` — аллергии и предпочтения (9 кейсов)
-
-- [x] `test_preferences_do_not_require_a_token` (контракт) — пустое тело → `400` (валидация срабатывает раньше доступа к БД, поэтому не `401`).
-- `test_preferences_validation` (контракт) — группа из 6 кейсов, все ✅: некорректное тело → `400`:
-  - [x] `[payload0]` нет `user_id`;
-  - [x] `[payload1]` `user_id` строкой (`"1"`);
-  - [x] `[payload2]` `user_id = 0`;
-  - [x] `[payload3]` `allergies` строкой вместо списка;
-  - [x] `[payload4]` в `allergies` есть не-строковый элемент (`42`);
-  - [x] `[payload5]` в `preferences` есть строка из пробелов.
-- [x] `test_preferences_are_persisted` (БД) — `POST /user_preferences` → `200` + `message`; значения проверены SQL-запросом к `users` (`allergies = ["peanuts"]`, `preferences = ["vegan"]`).
-- [x] `test_preferences_for_unknown_user_are_rejected` (БД) — `user_id = 999999` → `400`, id указан в тексте ошибки.
-
-### `tests/test_system.py` — системные пробы и контракт маршрутов (7 кейсов)
-
-- [x] `test_index_returns_the_documented_greeting` (контракт) — `GET /` → `200`, `text/plain` и `Welcome to the recipe app!`.
-- [x] `test_registered_routes_match_the_contract` (контракт) — `url_map` приложения совпадает с полным списком путей и методов из `openapi.yaml` (+ `/health`, `/ready`): 15 маршрутов, ни одного лишнего.
-- [x] `test_health_is_ok_without_database` (контракт) — `GET /health` → `200` и `{"status": "ok"}` даже без доступной БД.
-- [x] `test_ready_reports_missing_database` (контракт) — БД недоступна → `503` и `{"status": "not_ready", "database": "unavailable"}`.
-- [x] `test_ready_reports_healthy_database` (БД) — БД доступна → `200` и `{"status": "ready", "database": "ok"}`.
-- [x] `test_unknown_route_returns_error_object` (контракт) — `GET /no-such-endpoint` → `404` и тело с единственным ключом `error`.
-- [x] `test_method_not_allowed_returns_error_object` (контракт) — `DELETE /login` → `405` и тело с единственным ключом `error`.
+- [x] `test_tables_columns_and_primary_keys_match_the_diagram` — ровно 8 таблиц, у каждой
+  колонки тип и длина как на диаграмме, первичные ключи совпадают; `cuisine_type` отсутствует.
+- [x] `test_foreign_keys_and_the_email_index_match_the_diagram` — все внешние ключи и правила
+  `ON DELETE` (`CASCADE`/`SET NULL`), уникальный индекс `lower(email)` (email без учёта регистра).
+- [x] `test_triggers_and_functions_of_the_fridge_history_exist` — на `fridge_items` висят два
+  триггера и существуют их функции.
+- [x] `test_database_constraints_are_enforced` — ограничения работают на уровне БД:
+  `CHECK (quantity > 0)`, `NOT NULL` для пароля, уникальность username и email (без учёта регистра).
+- [x] `test_fridge_history_records_the_insert_and_the_update` — добавление продукта создаёт
+  версию 1 и запись `INSERT` без старых значений; изменение → версия 2 и запись `UPDATE`
+  со старым и новым значением.
+- [x] `test_fridge_history_survives_the_delete_of_a_product_and_of_a_user` — удаление
+  просроченного продукта пишет `DELETE`, история версий остаётся (ссылка обнуляется);
+  удаление пользователя чистит каскадом продукты, аллергии и аудит, но не ломает триггер
+  и сохраняет историю версий.
+- [x] `test_favorite_recipes_are_unique_and_cascade` — `favorite_recipes`: добавление, проверка,
+  список, повторное добавление игнорируется, несуществующий рецепт отклоняется внешним ключом,
+  снятие, удаление рецепта убирает его из избранного (у эндпоинта пока нет адреса в контракте,
+  поэтому проверяется через `app.models`).
+- [x] `test_generated_recipes_keep_what_was_offered` — `generated_recipes`: запись выдачи,
+  пустая выдача ничего не пишет, несуществующий рецепт отклоняется, очистка истории,
+  каскад при удалении рецепта.
 
 ## Примечания для отчётности
 
-- **Тесты, фиксирующие осознанные отклонения от CONTRIBUTION.md** (поведение задано `openapi.yaml`):
-  `test_create_recipe_does_not_require_a_token`, `test_list_items_returns_items_of_every_user`,
-  `test_preferences_do_not_require_a_token` — эти кейсы упадут, если маршруты решат закрыть токеном,
-  поэтому при смене решения их нужно обновлять вместе с `openapi.yaml`.
-- **Негативные кейсы против ограничений БД**: `[payload4]` в `test_fridge` (`quantity = 0`) и дубликаты
-  email/username проверяют, что ограничения объявлены в самой схеме (`schema.sql`), а не только в коде.
-- **Изоляция данных**: `test_delete_expired_touches_only_the_current_user` — единственный тест,
-  доказывающий, что защищённый эндпоинт использует `user_id` из токена, а не из тела запроса.
-- **Фикстуры** (`tests/conftest.py`): `app`/`client` — приложение без БД; `db_app`/`db_client` — приложение
-  с БД и очисткой таблиц (`TRUNCATE ... RESTART IDENTITY CASCADE`); `register_user`, `auth_headers`,
-  `add_fridge_items` — подготовка данных через реальные HTTP-запросы.
-- **Результат последнего прогона**: 76 passed, 0 failed, 0 skipped — на живом PostgreSQL
-  (проверено локально и в CI-workflow `Backend CI`).
-
-
-
+- **Осознанные отклонения от CONTRIBUTION.md, зафиксированные тестами** (поведение задано
+  `openapi.yaml`, поэтому менять его нужно вместе с контрактом): `POST /recipes` и
+  `POST /user_preferences` не требуют токена, `GET /fridge_items` и
+  `DELETE /delete_expired_products` работают со всеми пользователями.
+- **Изоляция данных**: `test_delete_expired_touches_only_the_user_from_the_token` — кейс,
+  доказывающий, что защищённый адрес берёт `user_id` из токена, а не из тела запроса.
+- **Фикстуры** (`tests/conftest.py`): `app`/`client` — приложение без БД; `db_app`/`db_client`/`db`
+  — приложение с БД, фасад базы для SQL-проверок и очистка всех восьми таблиц перед каждым
+  кейсом (`TRUNCATE ... RESTART IDENTITY CASCADE`); `register_user` и `add_fridge_items` —
+  подготовка данных через настоящие HTTP-запросы.
+- **Почему кейсов немного**: набор намеренно сделан обозримым для новичка — один успешный кейс
+  на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
+  тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
+  тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
+- **Результат последнего прогона** (15.10.2026): без БД — `11 passed, 25 skipped` (exit 0),
+  `ruff`/`black` — без замечаний. Полный прогон `36 passed` выполняет CI-workflow `Backend CI`.

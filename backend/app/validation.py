@@ -19,6 +19,16 @@ MAX_SHORT_FIELD_LENGTH = 255
 MAX_TEXT_FIELD_LENGTH = 10000
 MAX_LIST_LENGTH = 100
 MIN_PASSWORD_LENGTH = 8
+# The limits below mirror the column types declared in app/schema.sql
+# (docs/db_scheme.png), so oversized input fails with 400 instead of a database
+# error:
+MAX_USERNAME_LENGTH = 80  # users.username
+MAX_EMAIL_LENGTH = 120  # users.email
+MAX_RECIPE_NAME_LENGTH = 200  # recipes.recipe_name
+MAX_INSTRUCTION_LENGTH = 100  # recipes.instruction
+MAX_DIFFICULTY_LENGTH = 50  # recipes.difficulty_level
+MAX_PRODUCT_NAME_LENGTH = 100  # fridge_items.product_name
+MAX_TERM_LENGTH = 100  # user_allergy_preferences.allergy_name
 
 
 def json_object_body() -> dict:
@@ -79,7 +89,7 @@ def optional_string(
 
 def require_email(data: dict, field: str = "email") -> str:
     """Return a normalized e-mail address."""
-    value = require_string(data, field, max_length=MAX_SHORT_FIELD_LENGTH).lower()
+    value = require_string(data, field, max_length=MAX_EMAIL_LENGTH).lower()
     if not EMAIL_PATTERN.match(value):
         raise BadRequest("Field 'email' must be a valid e-mail address")
     return value
@@ -95,18 +105,6 @@ def require_positive_int(data: dict, field: str) -> int:
     if value <= 0:
         raise BadRequest(f"Field '{field}' must be greater than zero")
     return value
-
-
-def require_positive_number(data: dict, field: str) -> float:
-    """Return a positive numeric field (integers and floats are accepted)."""
-    value = data.get(field)
-    if value is None:
-        raise BadRequest(f"Field '{field}' is required")
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise BadRequest(f"Field '{field}' must be a number")
-    if value <= 0:
-        raise BadRequest(f"Field '{field}' must be greater than zero")
-    return float(value)
 
 
 def require_list_of_terms(data: dict, field: str, *, required: bool = True) -> list[str]:
@@ -127,9 +125,9 @@ def require_list_of_terms(data: dict, field: str, *, required: bool = True) -> l
         item = item.strip()
         if not item:
             raise BadRequest(f"Field '{field}' must not contain empty values")
-        if len(item) > MAX_SHORT_FIELD_LENGTH:
+        if len(item) > MAX_TERM_LENGTH:
             raise BadRequest(
-                f"Items of '{field}' must be at most {MAX_SHORT_FIELD_LENGTH} characters long"
+                f"Items of '{field}' must be at most {MAX_TERM_LENGTH} characters long"
             )
         terms.append(item)
     return terms
@@ -138,8 +136,9 @@ def require_list_of_terms(data: dict, field: str, *, required: bool = True) -> l
 def parse_terms(value: Any) -> list[str]:
     """Normalize a stored ``allergies``/``preferences`` value into a list of terms.
 
-    ``/register`` stores whatever the client sent ("as is" per openapi.yaml), so a
-    stored value may be a list, a comma separated string, a mapping or ``None``.
+    ``users.allergies``/``users.preferences`` are comma separated strings
+    (app/schema.sql); lists and mappings are still accepted so that values written
+    by an older client keep working.
     """
     if value is None:
         return []
@@ -150,6 +149,11 @@ def parse_terms(value: Any) -> list[str]:
     if isinstance(value, dict):
         return [str(key).strip() for key in value if str(key).strip()]
     return [str(value)]
+
+
+def join_terms(terms: Sequence[str]) -> str | None:
+    """Render terms as the comma separated text stored in ``users`` (``None`` if empty)."""
+    return ", ".join(terms) if terms else None
 
 
 def has_any_term(haystack: str, terms: Sequence[str]) -> bool:

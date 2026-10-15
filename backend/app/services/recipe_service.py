@@ -6,17 +6,24 @@ from ..db import Database
 from ..errors import NotFound
 from ..models import recipes as recipes_model
 from ..serializers import serialize_recipe
-from ..validation import MAX_TEXT_FIELD_LENGTH, require_string
+from ..validation import (
+    MAX_DIFFICULTY_LENGTH,
+    MAX_INSTRUCTION_LENGTH,
+    MAX_RECIPE_NAME_LENGTH,
+    MAX_TEXT_FIELD_LENGTH,
+    require_string,
+)
 
 
 def _validated(payload: dict) -> dict:
     """Validate the ``RecipeInput`` schema declared in openapi.yaml."""
     return {
-        "name": require_string(payload, "name"),
+        "name": require_string(payload, "name", max_length=MAX_RECIPE_NAME_LENGTH),
         "ingredients": require_string(payload, "ingredients", max_length=MAX_TEXT_FIELD_LENGTH),
-        "instructions": require_string(payload, "instructions", max_length=MAX_TEXT_FIELD_LENGTH),
-        "cuisine_type": require_string(payload, "cuisine_type"),
-        "difficulty_level": require_string(payload, "difficulty_level"),
+        "instructions": require_string(payload, "instructions", max_length=MAX_INSTRUCTION_LENGTH),
+        "difficulty_level": require_string(
+            payload, "difficulty_level", max_length=MAX_DIFFICULTY_LENGTH
+        ),
     }
 
 
