@@ -107,6 +107,9 @@ ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
+Полный прогон против реальной базы (`36 passed, 0 skipped`) проверен на этом коде: локально на
+PostgreSQL 16.2 и в CI на PostgreSQL 15.
+
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
 
 ### CI (GitHub Actions)

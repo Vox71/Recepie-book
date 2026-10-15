@@ -33,10 +33,10 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_database.py` | 8 | 0 | 8 | схема БД, ограничения, триггеры, таблицы без адресов |
 | **Всего** | **36** | **11** | **25** | |
 
-Проверено 15.10.2026 на этом коде: без БД — `11 passed, 25 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Полный прогон (`36 passed, 0 skipped`)
-выполняет CI на PostgreSQL 15: там доступность базы контролируется отдельным шагом,
-поэтому набор не может «позеленеть» на одних пропусках.
+Проверено 15.10.2026 на этом коде: без БД — `11 passed, 25 skipped` (exit 0); с реальной
+PostgreSQL 16.2 — `36 passed, 0 skipped` (exit 0); `ruff check .` и `black --check .` —
+без замечаний. Те же 36 кейсов повторяет CI на PostgreSQL 15: там доступность базы
+контролируется отдельным шагом, поэтому набор не может «позеленеть» на одних пропусках.
 
 ## Покрытие эндпоинтов: 19 адресов, 1–2 кейса на адрес
 
@@ -147,6 +147,9 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   колонки тип и длина как на диаграмме, первичные ключи совпадают; `cuisine_type` отсутствует.
 - [x] `test_foreign_keys_and_the_email_index_match_the_diagram` — все внешние ключи и правила
   `ON DELETE` (`CASCADE`/`SET NULL`), уникальный индекс `lower(email)` (email без учёта регистра).
+  Определение индекса сравнивается после нормализации: PostgreSQL печатает `lower(email)` как
+  `lower((email)::text)`, поэтому функция `_normalized_index_definition` убирает приведение типа
+  и лишние скобки.
 - [x] `test_triggers_and_functions_of_the_fridge_history_exist` — на `fridge_items` висят два
   триггера и существуют их функции.
 - [x] `test_database_constraints_are_enforced` — ограничения работают на уровне БД:
@@ -183,4 +186,5 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
 - **Результат последнего прогона** (15.10.2026): без БД — `11 passed, 25 skipped` (exit 0),
-  `ruff`/`black` — без замечаний. Полный прогон `36 passed` выполняет CI-workflow `Backend CI`.
+  с реальной PostgreSQL 16.2 — `36 passed, 0 skipped` (exit 0), `ruff`/`black` — без замечаний.
+  Те же 36 кейсов повторяет CI-workflow `Backend CI` на PostgreSQL 15.

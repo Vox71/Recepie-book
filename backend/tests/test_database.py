@@ -185,6 +185,19 @@ def _columns(db) -> dict[str, dict[str, tuple[str, int | None]]]:
     return columns
 
 
+def _normalized_index_definition(definition: str) -> str:
+    """Make an index definition comparable regardless of how PostgreSQL prints it.
+
+    The index is created as ``lower(email)``, but ``pg_indexes.indexdef`` renders
+    it as ``lower((email)::text)``: the cast and the brackets around the column
+    are added by PostgreSQL itself, so both are removed before the comparison.
+    """
+    compact = "".join(definition.split()).replace("::text", "")
+    while "((" in compact:
+        compact = compact.replace("((", "(").replace("))", ")")
+    return compact
+
+
 def _recipe_id(db_client, db) -> int:
     """Create one recipe through the API and return its primary key."""
     assert db_client.post("/recipes", json=RECIPE_PAYLOAD).status_code == 201
@@ -246,8 +259,9 @@ def test_foreign_keys_and_the_email_index_match_the_diagram(db):
         )
     }
     assert "users_email_lower_key" in indexes
-    assert "unique" in indexes["users_email_lower_key"]
-    assert "lower(email)" in indexes["users_email_lower_key"]
+    email_index = _normalized_index_definition(indexes["users_email_lower_key"])
+    assert "unique" in email_index
+    assert "lower(email)" in email_index
 
 
 def test_triggers_and_functions_of_the_fridge_history_exist(db):
@@ -313,7 +327,8 @@ def test_fridge_history_records_the_insert_and_the_update(
 
     entries = db.fetch_all(AUDIT_SQL, (user_id,))
     assert [entry["action_type"] for entry in entries] == ["INSERT", "UPDATE"]
-    assert entries[1]["old_values"]["quantity"] == 1
+    # old_values is the row as it was before the UPDATE (quantity was 2 above).
+    assert entries[1]["old_values"]["quantity"] == 2
     assert entries[1]["new_value"]["quantity"] == 5
 
 
