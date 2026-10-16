@@ -3,17 +3,19 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **36 кейсов в 7 файлах**. 11 кейсов работают без базы (проверка входных
-данных, работа с токеном, служебные адреса), 25 — против реальной PostgreSQL (включая саму
-схему БД). На каждый адрес из `openapi.yaml` приходится 1–2 кейса.
+**Состав набора:** **41 кейс в 9 файлах**. 13 кейсов работают без базы (проверка входных
+данных, работа с токеном, служебные адреса, компоненты ML-заглушки), 28 — против реальной
+PostgreSQL (включая саму схему БД). На каждый адрес из `openapi.yaml` приходится 1–2 кейса;
+адресов по-прежнему 19: модуль рекомендаций включается флагом `SMART_RECOMMENDATIONS_ENABLED`
+внутри `GET /recommend_recipes` (`tests/test_smart_recommendations.py`), новых маршрутов нет.
 
 ## Как запускать
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 11 passed, 25 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 13 passed, 28 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 36 passed
+                                 # с БД: 41 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -31,12 +33,15 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 5 | 1 | 4 | уведомления и рекомендации |
 | `tests/test_database.py` | 8 | 0 | 8 | схема БД, ограничения, триггеры, таблицы без адресов |
-| **Всего** | **36** | **11** | **25** | |
+| `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
+| `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
+| **Всего** | **41** | **13** | **28** | |
 
-Проверено 15.10.2026 на этом коде: без БД — `11 passed, 25 skipped` (exit 0); с реальной
-PostgreSQL 16.2 — `36 passed, 0 skipped` (exit 0); `ruff check .` и `black --check .` —
-без замечаний. Те же 36 кейсов повторяет CI на PostgreSQL 15: там доступность базы
-контролируется отдельным шагом, поэтому набор не может «позеленеть» на одних пропусках.
+Проверено 16.10.2026 на ветке `feat/smart-recommendations`: без БД — `13 passed, 28 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `41 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 41 кейс повторяет CI на PostgreSQL 15:
+там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
+одних пропусках.
 
 ## Покрытие эндпоинтов: 19 адресов, 1–2 кейса на адрес
 
@@ -139,6 +144,40 @@ PostgreSQL 16.2 — `36 passed, 0 skipped` (exit 0); `ruff check .` и `black --
   холодильник → пустой список; аллергии, записанные в `users.allergies` напрямую (без строк в
   `user_allergy_preferences`), тоже учитываются.
 
+### `tests/test_smart_recommendations.py` — 3 кейса (все с БД)
+
+Кейсы прогоняют один и тот же набор данных дважды: второе приложение собирается фабрикой
+`db_app_factory` (`conftest.py`) с `SMART_RECOMMENDATIONS_ENABLED=true` и работает с той же
+базой — так проверяется, что флаг действительно переключает логику адреса.
+
+- [x] `test_the_flag_on_ranks_the_favourites_and_the_fridge` — флаг включён: 4 рецепта, избранное
+  (Milk soup + Tomato salad), в холодильнике молоко, аллергия на арахис. Ответ 200:
+  `Milk soup` (похож на избранное и есть молоко), `Tomato salad` (похож на профиль без продукта
+  из холодильника), `Milk porridge`; `Peanut cookies` отброшен фильтром аллергенов, `id` ответа
+  совпадают с `recipes`, тело состоит ровно из `message` + `recipes` (внутренние оценки наружу
+  не утекают), сообщение содержит `rejected by allergy`, в `generated_recipes` 3 строки.
+- [x] `test_the_flag_off_keeps_the_baseline_answer` — флаг выключен: на тех же данных ответ
+  `Milk soup` + `Milk porridge` — базовая логика про избранное не знает, поэтому поведение
+  адреса не изменилось.
+- [x] `test_smart_mode_answers_an_empty_profile_and_rejects_an_unknown_user` — без избранного и
+  без холодильника 200 и пустой `recipes` с сообщением; токен удалённого пользователя → 401
+  `{"error": "User from the token does not exist"}`.
+
+### `tests/test_ml_engine.py` — 2 кейса (без БД)
+
+Юнит-тесты самого модуля (`app/ml`) — без Flask и без базы, поэтому идут в любом окружении.
+
+- [x] `test_preprocessing_normalizes_lemmatizes_and_marks_allergens` — компонент 1:
+  `МолОко, ЯЙЦА!` → `молоко яйца`, стоп-слова убираются, разные формы одного продукта дают одну
+  лемму (`яйца`/`яйцо`, `молока`/`молоко`, `печенье`/`печенья`, `peanuts`/`peanut`,
+  `tomatoes`/`tomato`), аллерген `peanut` находится в `peanuts`, аллергия из двух слов
+  (`peanut butter`) — только при полном совпадении, чужой аллерген не срабатывает.
+- [x] `test_knn_and_the_engine_rank_by_similarity_and_fridge_products` — компоненты 4–6: порядок
+  KNN по косинусной близости, одинаковая близость сохраняет исходный порядок (ответ
+  детерминирован), рецепт с аллергеном отброшен (`rejected_by_allergy = 1`), бонус за
+  холодильник поднимает молочные рецепты, `limit` ограничивает ответ, «холодный старт» без
+  избранного строит профиль по холодильнику и не добивает список рецептами с нулевой оценкой.
+
 ### `tests/test_database.py` — 8 кейсов (все с БД)
 
 Файл — «исполняемая» копия схемы `docs/db_scheme.png` и проверка того, что не покрыто адресами.
@@ -180,11 +219,14 @@ PostgreSQL 16.2 — `36 passed, 0 skipped` (exit 0); `ruff check .` и `black --
 - **Фикстуры** (`tests/conftest.py`): `app`/`client` — приложение без БД; `db_app`/`db_client`/`db`
   — приложение с БД, фасад базы для SQL-проверок и очистка всех восьми таблиц перед каждым
   кейсом (`TRUNCATE ... RESTART IDENTITY CASCADE`); `register_user` и `add_fridge_items` —
-  подготовка данных через настоящие HTTP-запросы.
+  подготовка данных через настоящие HTTP-запросы; `db_app_factory(**env)` собирает приложения с
+  дополнительными переменными окружения — так тестируется флаг `SMART_RECOMMENDATIONS_ENABLED`
+  (второе приложение на той же базе).
 - **Почему кейсов немного**: набор намеренно сделан обозримым для новичка — один успешный кейс
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (15.10.2026): без БД — `11 passed, 25 skipped` (exit 0),
-  с реальной PostgreSQL 16.2 — `36 passed, 0 skipped` (exit 0), `ruff`/`black` — без замечаний.
-  Те же 36 кейсов повторяет CI-workflow `Backend CI` на PostgreSQL 15.
+- **Результат последнего прогона** (16.10.2026, ветка `feat/smart-recommendations`): без БД —
+  `13 passed, 28 skipped` (exit 0), с PostgreSQL 15 в контейнере — `41 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 41 кейс повторяет CI-workflow `Backend CI`
+  на PostgreSQL 15.

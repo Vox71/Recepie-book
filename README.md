@@ -19,6 +19,7 @@ backend/
 │   ├── validation.py  # валидация входных данных (лимиты совпадают с типами колонок)
 │   ├── serializers.py # date/datetime/строки -> JSON (имена колонок -> имена полей API)
 │   ├── embeddings.py  # эмбеддинги (ленивая загрузка, включаются EMBEDDINGS_ENABLED)
+│   ├── ml/            # заглушка ML-модуля: предобработка, векторизация, KNN, фильтрация
 │   ├── schema.sql     # DDL: 8 таблиц, индексы, 2 триггера истории (идемпотентный)
 │   ├── migrate.py     # миграции: python -m app.migrate + журнал schema_migrations
 │   ├── models/        # SQL-слой: по модулю на таблицу, только параметризованные запросы
@@ -93,22 +94,53 @@ python worker.py --once                 # один проход
 python worker.py --interval-minutes 60  # цикл по расписанию
 ```
 
-### Тесты и линтеры
+### Модуль рекомендаций (заглушка ML)
 
-Набор — 36 кейсов в 7 файлах: по 1–2 кейса на каждый из 19 адресов (успех + отказ) и отдельный
-файл `tests/test_database.py` про саму схему БД. 11 кейсов идут без базы, 25 — против PostgreSQL.
+`app/ml` — минимальная рабочая версия рекомендательного модуля из `ml_planning/ml_plan`
+(«меньше, чем MVP»): конвейер проходит целиком и отвечает на реальные запросы, но внутри
+стоят намеренно простые решения — новых зависимостей и таблиц модуль не требует.
+
+| Компонент (`ml_plan`) | Где реализован | Чем заглушка отличается от целевого решения |
+|---|---|---|
+| предобработка данных | `app/ml/preprocessing.py` | нормализация и стоп-слова точные, лемматизация — таблица окончаний вместо `pymorphy2` |
+| векторизация | `app/ml/vectorizer.py` | SBERT при `EMBEDDINGS_ENABLED`, иначе разреженный bag-of-lemmas (без `torch` в старте) |
+| обучающая выборка | `app/ml/engine.py` | избранное пользователя (`favorite_recipes`); без него — «холодный старт» по холодильнику |
+| KNN | `app/ml/knn.py` | чистый Python вместо `sklearn.neighbors` (данных на один запрос мало) |
+| фильтрация | `app/ml/engine.py` | аллергены из `user_allergy_preferences` сравниваются по леммам |
+| контекстная адаптация | `app/ml/engine.py` | бонус за продукты из холодильника (`FRIDGE_BONUS = 0.2`) к косинусной близости |
+
+Модуль включается флагом, адрес при этом не меняется: `GET /recommend_recipes` отвечает в том
+же формате `message` + `recipes`, что и раньше, — переключается только внутренняя логика
+(`app/services/smart_recommendation_service.py`).
+
+```bash
+SMART_RECOMMENDATIONS_ENABLED=false  # базовая логика (как до модуля) — значение по умолчанию
+SMART_RECOMMENDATIONS_ENABLED=true   # заглушка ML-модуля
+SMART_RECOMMENDATIONS_LIMIT=5        # размер ответа (top-5 на диаграмме ml_plan)
+SMART_RECOMMENDATIONS_NEIGHBOURS=10  # сколько соседей рассматривает KNN
+```
+
+Переключатель проверяется тестами: `tests/test_smart_recommendations.py` прогоняет один и тот же
+набор данных дважды — с флагом и без него. Чего в заглушке ещё нет (следующий шаг работы):
+действительное обучение SBERT на истории выдач, полноценная морфология, метрики качества.
+
+
+Набор — 41 кейс в 9 файлах: по 1–2 кейса на каждый из 19 адресов (успех + отказ), отдельный
+файл `tests/test_database.py` про саму схему БД и два файла про заглушку ML-модуля
+(`tests/test_ml_engine.py` без базы и `tests/test_smart_recommendations.py` против неё).
+13 кейсов идут без базы, 28 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 11 passed, 25 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 13 passed, 28 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 36 passed
+                                # с БД: 41 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`36 passed, 0 skipped`) проверен на этом коде: локально на
-PostgreSQL 16.2 и в CI на PostgreSQL 15.
+Полный прогон против реальной базы (`41 passed, 0 skipped`) проверен на этом коде локально
+(PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
 
@@ -116,7 +148,7 @@ PostgreSQL 16.2 и в CI на PostgreSQL 15.
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
   Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
-  и `python -m pytest` (36 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
+  и `python -m pytest` (41 кейс, DB-часть идёт против сервисной базы `recipes_test`;
   файл `tests/test_database.py` проверяет саму схему БД `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).
