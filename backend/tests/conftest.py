@@ -11,6 +11,7 @@ import os
 
 import psycopg2
 import pytest
+from flask import Flask
 
 from app import create_app
 from app.config import Settings
@@ -63,23 +64,41 @@ def client(app):
 
 
 @pytest.fixture()
-def db_app(database_url):
-    """Application bound to a real database with empty tables."""
-    settings = Settings(
-        {
-            "JWT_SECRET": TEST_JWT_SECRET,
-            "DATABASE_URL": database_url,
-            "AUTO_INIT_SCHEMA": "true",
-        }
-    )
-    application = create_app(settings)
-    db = application.extensions["db"]
-    try:
-        with db.cursor() as cur:
+def db_app_factory(database_url):
+    """Build database-backed applications, optionally with extra environment variables.
+
+    ``db_app_factory(SMART_RECOMMENDATIONS_ENABLED="true")`` returns a second application
+    that shares the same database but runs with the stub ML module switched on - that is
+    how the feature flag is tested (app/config.py).
+    """
+    applications: list[Flask] = []
+
+    def _build(**extra_env: str) -> Flask:
+        settings = Settings(
+            {
+                "JWT_SECRET": TEST_JWT_SECRET,
+                "DATABASE_URL": database_url,
+                "AUTO_INIT_SCHEMA": "true",
+                **extra_env,
+            }
+        )
+        application = create_app(settings)
+        with application.extensions["db"].cursor() as cur:
             cur.execute(TRUNCATE_STATEMENT)
-        yield application
+        applications.append(application)
+        return application
+
+    try:
+        yield _build
     finally:
-        db.reset_pool()
+        for application in applications:
+            application.extensions["db"].reset_pool()
+
+
+@pytest.fixture()
+def db_app(db_app_factory):
+    """Application bound to a real database with empty tables."""
+    return db_app_factory()
 
 
 @pytest.fixture()
