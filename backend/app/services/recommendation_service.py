@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from . import smart_recommendation_service
 from .. import embeddings
 from ..config import Settings
 from ..db import Database
@@ -41,7 +42,15 @@ def suggest_recipes(db: Database, user_id: int, settings: Settings) -> dict:
 
 
 def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
-    """Recommend recipes based on the fridge contents, allergies and preferences."""
+    """Recommend recipes based on the fridge contents, allergies and preferences.
+
+    With ``SMART_RECOMMENDATIONS_ENABLED`` the request is served by the stub ML module
+    (``app/ml``), otherwise by the baseline scoring below; the answer has the same shape
+    in both cases (openapi.yaml), so a client cannot tell the modes apart.
+    """
+    if settings.smart_recommendations_enabled:
+        return smart_recommendation_service.recommend_recipes(db, user_id, settings)
+
     user = users_model.get_user_by_id(db, user_id)
     if user is None:
         raise Unauthorized("User from the token does not exist")

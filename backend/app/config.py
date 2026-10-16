@@ -17,6 +17,10 @@ DEFAULT_JWT_ALGORITHM = "HS256"
 DEFAULT_DB_POOL_MIN = 1
 DEFAULT_DB_POOL_MAX = 10
 DEFAULT_RECOMMENDATIONS_LIMIT = 10
+# The stub ML module answers with a shorter list: the diagram of ml_planning/ml_plan
+# ends with "top-5 safe recipes", and KNN looks at this many neighbours.
+DEFAULT_SMART_RECOMMENDATIONS_LIMIT = 5
+DEFAULT_SMART_RECOMMENDATIONS_NEIGHBOURS = 10
 DEFAULT_RATE_LIMIT_MAX_REQUESTS = 10
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
 DEFAULT_LOG_LEVEL = "INFO"
@@ -68,6 +72,17 @@ class Settings:
         self.embedding_model = env.get("EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
         self.recommendations_limit = _as_int(
             env.get("RECOMMENDATIONS_LIMIT"), DEFAULT_RECOMMENDATIONS_LIMIT
+        )
+        # Switch of the stub recommendation module (app/ml); off by default, so an
+        # installation keeps the baseline scoring until the variable is set.
+        self.smart_recommendations_enabled = _as_bool(
+            env.get("SMART_RECOMMENDATIONS_ENABLED"), False
+        )
+        self.smart_recommendations_limit = _as_int(
+            env.get("SMART_RECOMMENDATIONS_LIMIT"), DEFAULT_SMART_RECOMMENDATIONS_LIMIT
+        )
+        self.smart_recommendations_neighbours = _as_int(
+            env.get("SMART_RECOMMENDATIONS_NEIGHBOURS"), DEFAULT_SMART_RECOMMENDATIONS_NEIGHBOURS
         )
         self.rate_limit_enabled = _as_bool(env.get("RATE_LIMIT_ENABLED"), False)
         self.rate_limit_max_requests = _as_int(
