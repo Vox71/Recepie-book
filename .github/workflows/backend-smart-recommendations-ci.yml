@@ -1,0 +1,97 @@
+name: Backend CI (smart recommendations)
+
+# Ветка feat/smart-recommendations приносит модуль рекомендаций со своим флагом
+# (SMART_RECOMMENDATIONS_ENABLED, backend/app/ml). Этот workflow повторяет проверки
+# Backend CI (CONTRIBUTION.md §10, §11, §15) именно на этой ветке: push в неё, PR
+# с ней и PR в неё — чтобы набор из 41 кейса и линтеры были зелёными до слияния,
+# не дожидаясь main. Основной workflow (backend-tests.yml) продолжает отвечать за
+# push в main и за остальные PR.
+
+on:
+  push:
+    branches: [ "feat/smart-recommendations" ]
+  pull_request:
+    branches: [ "feat/smart-recommendations", "main" ]
+  workflow_dispatch:
+
+# Своя группа, отличная от backend-ci: иначе два workflow вытесняли бы друг друга
+# на одном и том же ref.
+concurrency:
+  group: backend-smart-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (Python 3.11 + PostgreSQL 15)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Реальная PostgreSQL для DB-тестов: без сервиса tests/conftest.py молча
+    # пропустил бы 28 кейсов из 41, и job стал бы «зелёным» на одних пропусках.
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: recipes_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/recipes_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/recipes_test
+      JWT_SECRET: ci-jwt-secret-not-for-production-use
+      AUTO_INIT_SCHEMA: "true"
+      # Тяжёлые модели не нужны: ML-заглушка работает и на разреженном бэкенде,
+      # поэтому прогон остаётся детерминированным и без скачивания SBERT.
+      EMBEDDINGS_ENABLED: "false"
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Verify the test database is reachable
+        run: |
+          python -c "import os, psycopg2; connection = psycopg2.connect(os.environ['TEST_DATABASE_URL'], connect_timeout=5); connection.close(); print('PostgreSQL is reachable')"
+
+      # Тесты подставляют настройки словарём (tests/conftest.py), поэтому путь
+      # «переменная окружения -> Settings» проверяем отдельно: по умолчанию флаг
+      # выключен, а со значением true включается именно заглушка ML-модуля.
+      - name: Read the feature flag from the environment
+        run: |
+          python -c "from app.config import Settings; settings = Settings(); assert settings.smart_recommendations_enabled is False, 'the flag must be off by default'; print('SMART_RECOMMENDATIONS_ENABLED is off by default')"
+          SMART_RECOMMENDATIONS_ENABLED=true SMART_RECOMMENDATIONS_LIMIT=5 SMART_RECOMMENDATIONS_NEIGHBOURS=10 python -c "from app.config import Settings; settings = Settings(); assert settings.smart_recommendations_enabled is True, 'the flag is not read from the environment'; assert Settings({'SMART_RECOMMENDATIONS_ENABLED': 'true'}).smart_recommendations_enabled is True; print('flag on:', settings.smart_recommendations_limit, 'recipes,', settings.smart_recommendations_neighbours, 'neighbours')"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (black)
+        run: black --check .
+
+      # Сначала видно, какие кейсы отвечают за новую функциональность
+      # (обе ветки одного и того же адреса с флагом и без него).
+      - name: Run the smart recommendations tests
+        run: python -m pytest tests/test_ml_engine.py tests/test_smart_recommendations.py -v
+
+      - name: Run the test suite
+        run: python -m pytest
