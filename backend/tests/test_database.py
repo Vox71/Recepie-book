@@ -1,9 +1,10 @@
-"""The database itself: the eight tables of ``docs/db_scheme.png``.
+"""The database itself: the nine tables of ``docs/db_schema.md``.
 
 This file is the executable form of the ER diagram and covers everything that no
-endpoint touches: column types, keys, the triggers that fill the fridge history
-and the two tables of the diagram that have no API route yet
-(``favorite_recipes`` and ``generated_recipes``, used through ``app.models``).
+endpoint touches: column types, keys, the triggers that fill the fridge history and
+``recipes.updated_at``, and the tables of the diagram that have no API route yet
+(``favorite_recipes``, ``generated_recipes`` and ``recipe_ingredients``, used
+through ``app.models``).
 
 PostgreSQL is required, exactly like in the other database-backed tests.
 """
@@ -27,6 +28,7 @@ EXPECTED_TABLES = frozenset(
     {
         "users",
         "recipes",
+        "recipe_ingredients",
         "fridge_items",
         "favorite_recipes",
         "generated_recipes",
@@ -49,8 +51,20 @@ EXPECTED_COLUMNS = {
         "id": ("integer", None),
         "recipe_name": ("character varying", 200),
         "ingredients": ("text", None),
-        "instruction": ("character varying", 100),
+        # text, not varchar(100): an instruction does not fit into 100 characters
+        # and the imported recipes have none at all.
+        "instruction": ("text", None),
         "difficulty_level": ("character varying", 50),
+        "source_url": ("character varying", 255),
+        "created_at": ("timestamp without time zone", None),
+        "updated_at": ("timestamp without time zone", None),
+    },
+    "recipe_ingredients": {
+        "id": ("integer", None),
+        "recipe_id": ("integer", None),
+        "ingredient_name": ("character varying", 200),
+        "quantity_text": ("character varying", 100),
+        "sort_order": ("integer", None),
     },
     "fridge_items": {
         "item_id": ("integer", None),
@@ -64,6 +78,7 @@ EXPECTED_COLUMNS = {
         "id": ("integer", None),
         "user_id": ("integer", None),
         "recipe_id": ("integer", None),
+        "created_at": ("timestamp without time zone", None),
     },
     "generated_recipes": {
         "id": ("integer", None),
@@ -100,6 +115,7 @@ EXPECTED_COLUMNS = {
 EXPECTED_PRIMARY_KEYS = {
     "users": {"id"},
     "recipes": {"id"},
+    "recipe_ingredients": {"id"},
     "fridge_items": {"item_id"},
     "favorite_recipes": {"id"},
     "generated_recipes": {"id"},
@@ -110,6 +126,7 @@ EXPECTED_PRIMARY_KEYS = {
 # (child table, child column) -> (parent table, parent column, ON DELETE rule)
 EXPECTED_FOREIGN_KEYS = {
     ("fridge_items", "user_id"): ("users", "id", "CASCADE"),
+    ("recipe_ingredients", "recipe_id"): ("recipes", "id", "CASCADE"),
     ("favorite_recipes", "user_id"): ("users", "id", "CASCADE"),
     ("favorite_recipes", "recipe_id"): ("recipes", "id", "CASCADE"),
     ("generated_recipes", "user_id"): ("users", "id", "CASCADE"),
@@ -145,6 +162,10 @@ FOREIGN_KEY_SQL = """
 INSERT_USER_SQL = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
 INSERT_ITEM_SQL = """
     INSERT INTO fridge_items (user_id, product_name, expiration_date, quantity)
+    VALUES (%s, %s, %s, %s)
+"""
+INSERT_INGREDIENT_SQL = """
+    INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity_text, sort_order)
     VALUES (%s, %s, %s, %s)
 """
 RECIPE_PAYLOAD = {
@@ -210,7 +231,7 @@ def _item_id(db) -> int:
 
 
 def test_tables_columns_and_primary_keys_match_the_diagram(db):
-    """The eight tables, their column types and the primary keys of the diagram."""
+    """The nine tables, their column types and the primary keys of the diagram."""
     tables = {
         row["table_name"]
         for row in db.fetch_all(
@@ -416,3 +437,132 @@ def test_generated_recipes_keep_what_was_offered(db_client, register_user, db):
     generated_model.record_generated(db, user_id, [recipe_id])
     assert db.execute("DELETE FROM recipes WHERE id = %s", (recipe_id,)) == 1
     assert generated_model.list_generated(db, user_id) == []
+
+
+def test_recipe_ingredients_are_unique_and_cascade(db_client, db):
+    """recipe_ingredients: one row per ingredient, removed together with its recipe."""
+    recipe_id = _recipe_id(db_client, db)
+
+    assert db.execute(INSERT_INGREDIENT_SQL, (recipe_id, "Яйцо куриное", "5 шт", 0)) == 1
+    # The amount is optional: the imported data does not always contain one.
+    assert db.execute(INSERT_INGREDIENT_SQL, (recipe_id, "Соль", None, 1)) == 1
+    rows = db.fetch_all(
+        """
+        SELECT ingredient_name, quantity_text, sort_order
+        FROM recipe_ingredients
+        WHERE recipe_id = %s
+        ORDER BY sort_order
+        """,
+        (recipe_id,),
+    )
+    assert rows == [
+        {"ingredient_name": "Яйцо куриное", "quantity_text": "5 шт", "sort_order": 0},
+        {"ingredient_name": "Соль", "quantity_text": None, "sort_order": 1},
+    ]
+
+    # The same ingredient cannot be listed twice for one recipe...
+    with pytest.raises(pg_errors.UniqueViolation):
+        db.execute(INSERT_INGREDIENT_SQL, (recipe_id, "Соль", "1 щепот.", 2))
+
+    # ...but the same name is fine in another recipe.
+    assert (
+        db_client.post("/recipes", json={**RECIPE_PAYLOAD, "name": "Omelette"}).status_code == 201
+    )
+    other_id = int(
+        db.fetch_one("SELECT id FROM recipes WHERE recipe_name = %s", ("Omelette",))["id"]
+    )
+    assert db.execute(INSERT_INGREDIENT_SQL, (other_id, "Соль", "1 щепот.", 0)) == 1
+
+    # The recipe must exist (foreign key to recipes.id).
+    with pytest.raises(pg_errors.ForeignKeyViolation):
+        db.execute(INSERT_INGREDIENT_SQL, (999999, "Соль", None, 0))
+
+    # Deleting a recipe deletes its ingredients and keeps the others (ON DELETE CASCADE).
+    assert db.execute("DELETE FROM recipes WHERE id = %s", (recipe_id,)) == 1
+    assert (
+        db.fetch_all("SELECT id FROM recipe_ingredients WHERE recipe_id = %s", (recipe_id,)) == []
+    )
+    assert db.fetch_all("SELECT id FROM recipe_ingredients WHERE recipe_id = %s", (other_id,)) != []
+
+
+def test_imported_recipes_are_unique_by_source_url(db):
+    """source_url is the natural key of an imported recipe; manual recipes keep it NULL."""
+    url = "https://www.povarenok.ru/recipes/show/171921/"
+    first = db.fetch_one(
+        """
+        INSERT INTO recipes (recipe_name, ingredients, source_url)
+        VALUES (%s, %s, %s)
+        RETURNING id
+        """,
+        ("Омлет с сыром и ветчиной", "Яйцо куриное, Ветчина, Сыр твердый", url),
+    )
+    assert first is not None
+
+    with pytest.raises(pg_errors.UniqueViolation):
+        db.execute(
+            """
+            INSERT INTO recipes (recipe_name, ingredients, source_url)
+            VALUES (%s, %s, %s)
+            """,
+            ("Омлет (дубль)", "Яйцо куриное", url),
+        )
+
+    # Manual recipes have no source, and PostgreSQL allows any number of NULLs.
+    for name in ("Manual one", "Manual two"):
+        assert (
+            db.execute(
+                "INSERT INTO recipes (recipe_name, ingredients) VALUES (%s, %s)",
+                (name, "salt"),
+            )
+            == 1
+        )
+
+    # A repeated import run inserts nothing: this is what makes the parser idempotent.
+    again = db.fetch_one(
+        """
+        INSERT INTO recipes (recipe_name, ingredients, source_url)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (source_url) DO NOTHING
+        RETURNING id
+        """,
+        ("Омлет с сыром и ветчиной", "Яйцо куриное", url),
+    )
+    assert again is None
+
+
+def test_recipe_timestamps_and_the_text_instruction_are_maintained_by_the_database(db):
+    """created_at/updated_at belong to the database; an instruction is no longer 100 chars."""
+    long_instruction = "Шаг 1. Обжарить лук. " * 20  # 420 characters
+    row = db.fetch_one(
+        """
+        INSERT INTO recipes (recipe_name, ingredients, instruction)
+        VALUES (%s, %s, %s)
+        RETURNING id, created_at, updated_at
+        """,
+        ("Long instruction", "onion", long_instruction),
+    )
+    stored = db.fetch_one(
+        "SELECT length(instruction) AS size FROM recipes WHERE id = %s", (row["id"],)
+    )
+    assert stored["size"] == len(long_instruction)
+    assert row["created_at"] == row["updated_at"]
+
+    # recipes_updated_at_trigger moves updated_at on every UPDATE, created_at stays.
+    previous = row["updated_at"]
+    assert (
+        db.execute("UPDATE recipes SET recipe_name = %s WHERE id = %s", ("Renamed", row["id"])) == 1
+    )
+    updated = db.fetch_one("SELECT created_at, updated_at FROM recipes WHERE id = %s", (row["id"],))
+    assert updated["updated_at"] > previous
+    assert updated["created_at"] == row["created_at"]
+
+    # An imported recipe has neither an instruction nor a difficulty level.
+    imported = db.fetch_one(
+        """
+        INSERT INTO recipes (recipe_name, ingredients)
+        VALUES (%s, %s)
+        RETURNING instruction, difficulty_level, source_url
+        """,
+        ("Импортированный рецепт", "соль"),
+    )
+    assert imported == {"instruction": None, "difficulty_level": None, "source_url": None}
