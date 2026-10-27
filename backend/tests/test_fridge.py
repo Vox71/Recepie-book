@@ -1,16 +1,15 @@
 """Fridge: ``/fridge_items`` (list, add a batch) and ``/delete_expired_products``.
 
 Both routes work with all users exactly as documented in openapi.yaml; the only
-rules enforced here are input validation and SQL parameterisation.
+rules enforced here are input validation, SQL parameterisation and the shared
+"expired" predicate of ``app/models/fridge.py`` (``expiration_date < CURRENT_DATE``).
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-TODAY = date.today()
-YESTERDAY = TODAY - timedelta(days=1)
-TOMORROW = TODAY + timedelta(days=1)
+TOMORROW = date.today() + timedelta(days=1)
 
 
 def test_add_and_list_fridge_items(db_client, register_user, db):
@@ -72,12 +71,17 @@ def test_add_fridge_items_validates_the_payload(db_client, register_user):
 
 
 def test_delete_expired_products_removes_only_expired_items(
-    db_client, register_user, add_fridge_items
+    db_client, register_user, add_fridge_items, db
 ):
+    """The rule is ``expiration_date < CURRENT_DATE``: "today" is still a valid product."""
+    today = db.fetch_one("SELECT CURRENT_DATE AS day")["day"]
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+
     user_id, _ = register_user()
-    add_fridge_items(user_id, "old milk", YESTERDAY)
-    add_fridge_items(user_id, "fresh bread", TOMORROW)
-    add_fridge_items(user_id, "expires today", TODAY)
+    add_fridge_items(user_id, "old milk", yesterday)
+    add_fridge_items(user_id, "fresh bread", tomorrow)
+    add_fridge_items(user_id, "expires today", today)
 
     response = db_client.delete("/delete_expired_products")
     assert response.status_code == 200
@@ -86,6 +90,35 @@ def test_delete_expired_products_removes_only_expired_items(
     # A product that expires today is still usable, so it stays in the fridge.
     remaining = {item["product_name"] for item in db_client.get("/fridge_items").get_json()}
     assert remaining == {"fresh bread", "expires today"}
+
+    # Running it again deletes nothing instead of failing.
+    again = db_client.delete("/delete_expired_products")
+    assert again.status_code == 200
+    assert again.get_json() == {"message": "Deleted 0 expired product(s)"}
+
+
+def test_delete_expired_products_uses_the_database_date_as_the_boundary(
+    db_client, register_user, add_relative_fridge_items, db
+):
+    """Yesterday is expired, today is still valid, tomorrow is valid; a repeat deletes 0."""
+    user_id, _ = register_user()
+    add_relative_fridge_items(user_id, "two days ago", -2)
+    add_relative_fridge_items(user_id, "expired yesterday", -1)
+    add_relative_fridge_items(user_id, "expires today", 0)
+    add_relative_fridge_items(user_id, "expires tomorrow", 1)
+
+    response = db_client.delete("/delete_expired_products")
+    assert response.status_code == 200
+    assert response.get_json() == {"message": "Deleted 2 expired product(s)"}
+
+    # A product that expires today is still usable, so it stays in the fridge.
+    remaining = {
+        item["product_name"]: item["expiration_date"]
+        for item in db_client.get("/fridge_items").get_json()
+    }
+    assert set(remaining) == {"expires today", "expires tomorrow"}
+    today = db.fetch_one("SELECT CURRENT_DATE AS day")["day"].isoformat()
+    assert remaining["expires today"] == today
 
     # Running it again deletes nothing instead of failing.
     again = db_client.delete("/delete_expired_products")

@@ -53,7 +53,11 @@ def add_items(db: Database, payload: list) -> dict:
 
 
 def delete_expired_products(db: Database) -> dict:
-    """Delete expired items of every user and return the ``/delete_expired_products`` body."""
+    """Delete expired items of every user and return the ``/delete_expired_products`` body.
+
+    The rows are selected by the same ``EXPIRED_CONDITION`` (``app/models/fridge.py``) as
+    ``/notify_expired``, so the address never deletes something it did not report.
+    """
     deleted = fridge_model.delete_expired_items(db)
     return {"message": f"Deleted {deleted} expired product(s)"}
 
