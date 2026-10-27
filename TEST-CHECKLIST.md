@@ -3,9 +3,9 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **44 кейса в 9 файлах**. 13 кейсов работают без базы (проверка входных
-данных, работа с токеном, служебные адреса, компоненты ML-заглушки), 31 — против реальной
-PostgreSQL (включая саму схему БД). На каждый адрес из `openapi.yaml` приходится 1–2 кейса;
+**Состав набора:** **46 кейсов в 9 файлах**. 13 кейсов работают без базы (проверка входных
+данных, работа с токеном, служебные адреса, компоненты ML-заглушки), 33 — против реальной
+PostgreSQL (включая саму схему БД). На каждый адрес из `openapi.yaml` приходится 1–3 кейса;
 адресов по-прежнему 19: модуль рекомендаций включается флагом `SMART_RECOMMENDATIONS_ENABLED`
 внутри `GET /recommend_recipes` (`tests/test_smart_recommendations.py`), новых маршрутов нет.
 
@@ -13,9 +13,9 @@ PostgreSQL (включая саму схему БД). На каждый адре
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 13 passed, 31 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 13 passed, 33 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 44 passed
+                                 # с БД: 46 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -29,17 +29,17 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_system.py` | 6 | 5 | 1 | служебные адреса, список маршрутов, формат ошибок |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
 | `tests/test_recipes.py` | 6 | 0 | 6 | CRUD рецептов |
-| `tests/test_fridge.py` | 3 | 0 | 3 | холодильник и удаление просроченного |
+| `tests/test_fridge.py` | 4 | 0 | 4 | холодильник и удаление просроченного |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
-| `tests/test_notifications_recommendations.py` | 5 | 1 | 4 | уведомления и рекомендации |
+| `tests/test_notifications_recommendations.py` | 6 | 1 | 5 | уведомления и рекомендации |
 | `tests/test_database.py` | 11 | 0 | 11 | схема БД, ограничения, триггеры, таблицы без адресов |
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
-| **Всего** | **44** | **13** | **31** | |
+| **Всего** | **46** | **13** | **33** | |
 
-Проверено 27.10.2026 на ветке `feat/recipe-ingredients-schema`: без БД — `13 passed, 31 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `44 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 44 кейса повторяет CI на PostgreSQL 15:
+Проверено 27.10.2026 на ветке `fix/expired-products`: без БД — `13 passed, 33 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `46 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 46 кейсов повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
@@ -61,9 +61,9 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `DELETE /recipes/{id}` | `test_delete_recipe` | 200, рецепт исчез из списка; 404 на неизвестный id |
 | `GET /fridge_items` | `test_add_and_list_fridge_items` | 200, поля продукта, `id` = `fridge_items.item_id` |
 | `POST /fridge_items` | `test_add_and_list_fridge_items`, `test_add_fridge_items_validates_the_payload` | 201 + сохранение батча; 400 на 10 некорректных тел (включая `quantity = 0` и неизвестного пользователя) |
-| `DELETE /delete_expired_products` | `test_delete_expired_products_removes_only_expired_items` | удаляются только просроченные, повторный вызов безопасен |
-| `GET /notify_expired` | `test_notify_expired_lists_only_expired_products` | пустой холодильник и список просроченных продуктов |
-| `DELETE /delete_expired` | `test_delete_expired_touches_only_the_user_from_the_token` | удаляются продукты только того пользователя, чей токен |
+| `DELETE /delete_expired_products` | `test_delete_expired_products_removes_only_expired_items`, `test_delete_expired_products_uses_the_database_date_as_the_boundary` | удаляются только просроченные; граница «вчера / сегодня / завтра» по дате БД; повторный вызов безопасен |
+| `GET /notify_expired` | `test_notify_expired_lists_only_expired_products`, `test_notify_expired_and_delete_expired_products_use_one_rule` | пустой холодильник и список просроченных продуктов; отчёт и удаление считают просроченным одно и то же |
+| `DELETE /delete_expired` | `test_delete_expired_touches_only_the_user_from_the_token` | удаляются продукты только того пользователя, чей токен, по тому же правилу |
 | `GET /suggest_recipes` | `test_suggest_recipes_uses_the_expired_products` | подсказки по просроченным продуктам + запись в `generated_recipes` |
 | `GET /recommend_recipes` | `test_recommend_recipes_uses_the_fridge_and_skips_the_allergies` | рекомендации по холодильнику без аллергенов, история выдачи, пустой холодильник, аллергии из текстовой колонки |
 
@@ -109,7 +109,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   неполное тело → 400, неизвестный id → 404.
 - [x] `test_delete_recipe` — 200, рецепт исчез, список пуст; повторное удаление → 404.
 
-### `tests/test_fridge.py` — 3 кейса (все с БД)
+### `tests/test_fridge.py` — 4 кейса (все с БД)
 
 - [x] `test_add_and_list_fridge_items` — 201 и сообщение `N fridge item(s) added`; в списке
   корректные поля, `id` ответа совпадает с `fridge_items.item_id`, `quantity` — целое.
@@ -118,6 +118,11 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   дробное `quantity`, длинное имя продукта, дата не в ISO 8601, несуществующий `user_id`.
 - [x] `test_delete_expired_products_removes_only_expired_items` — удаляется только просроченный
   продукт, продукт со сроком «сегодня» остаётся; повторный вызов удаляет 0 и не падает.
+- [x] `test_delete_expired_products_uses_the_database_date_as_the_boundary` — продукты с датами
+  `CURRENT_DATE - 2`, `CURRENT_DATE - 1`, `CURRENT_DATE`, `CURRENT_DATE + 1` (созданы через
+  фикстуру `add_relative_fridge_items`, то есть по тем же часам, что и правило): удаляются ровно
+  два просроченных, «сегодня» и «завтра» остаются, дата «сегодня» совпадает с `CURRENT_DATE`;
+  повторный `DELETE` → 0.
 
 ### `tests/test_user_preferences.py` — 2 кейса (1 без БД)
 
@@ -128,12 +133,16 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 - [x] `test_user_preferences_validation` — 400 в цикле на 6 тел (нет `user_id`, `user_id`
   строкой или нулём, аллергии не списком, элементы не строки, пустые элементы).
 
-### `tests/test_notifications_recommendations.py` — 5 кейсов (1 без БД)
+### `tests/test_notifications_recommendations.py` — 6 кейсов (1 без БД)
 
 - [x] `test_all_four_routes_require_a_token` — 401 для `/notify_expired`, `/delete_expired`,
   `/suggest_recipes`, `/recommend_recipes` без токена и с испорченным токеном.
 - [x] `test_notify_expired_lists_only_expired_products` — пустой холодильник → сообщение
   `No expired products found`; с продуктами → в `expired_products` только просроченный.
+- [x] `test_notify_expired_and_delete_expired_products_use_one_rule` — отчёт `GET /notify_expired`
+  и удаление `DELETE /delete_expired_products` считают просроченным один и тот же набор: сколько
+  продуктов попало в отчёт, столько же удалено; продукт со сроком «сегодня» остаётся; после
+  удаления отчёт пуст.
 - [x] `test_delete_expired_touches_only_the_user_from_the_token` — удаляются продукты того
   пользователя, чей токен; данные второго пользователя остаются.
 - [x] `test_suggest_recipes_uses_the_expired_products` — без просроченных продуктов рецептов нет;
@@ -230,17 +239,24 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   `DELETE /delete_expired_products` работают со всеми пользователями.
 - **Изоляция данных**: `test_delete_expired_touches_only_the_user_from_the_token` — кейс,
   доказывающий, что защищённый адрес берёт `user_id` из токена, а не из тела запроса.
+- **Одно правило для просроченных продуктов**: граница задана в `app/models/fridge.py`
+  (`EXPIRED_CONDITION = "expiration_date < CURRENT_DATE"`) и используется `GET /notify_expired`,
+  `DELETE /delete_expired`, `DELETE /delete_expired_products`, `GET /suggest_recipes` и воркером.
+  Дата берётся из базы, а не из Python: иначе web-процесс и PostgreSQL в разных часовых поясах
+  давали бы разный ответ около полуночи. Кейсы — `test_notify_expired_and_delete_expired_products_use_one_rule`
+  и `test_delete_expired_products_uses_the_database_date_as_the_boundary`.
 - **Фикстуры** (`tests/conftest.py`): `app`/`client` — приложение без БД; `db_app`/`db_client`/`db`
   — приложение с БД, фасад базы для SQL-проверок и очистка всех девяти таблиц перед каждым
   кейсом (`TRUNCATE ... RESTART IDENTITY CASCADE`); `register_user` и `add_fridge_items` —
-  подготовка данных через настоящие HTTP-запросы; `db_app_factory(**env)` собирает приложения с
-  дополнительными переменными окружения — так тестируется флаг `SMART_RECOMMENDATIONS_ENABLED`
-  (второе приложение на той же базе).
+  подготовка данных через настоящие HTTP-запросы; `add_relative_fridge_items` — продукты с датами
+  относительно часов базы (`CURRENT_DATE + смещение`), чтобы проверять границу по тому же правилу;
+  `db_app_factory(**env)` собирает приложения с дополнительными переменными окружения — так
+  тестируется флаг `SMART_RECOMMENDATIONS_ENABLED` (второе приложение на той же базе).
 - **Почему кейсов немного**: набор намеренно сделан обозримым для новичка — один успешный кейс
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (27.10.2026, ветка `feat/recipe-ingredients-schema`): без БД —
-  `13 passed, 31 skipped` (exit 0), с PostgreSQL 15 в контейнере — `44 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 44 кейса повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (27.10.2026, ветка `fix/expired-products`): без БД —
+  `13 passed, 33 skipped` (exit 0), с PostgreSQL 15 в контейнере — `46 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 46 кейсов повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
