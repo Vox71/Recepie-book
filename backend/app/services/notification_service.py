@@ -1,4 +1,8 @@
-"""Notification business logic for expired products."""
+"""Notification business logic for expired products.
+
+"Expired" is defined once, in ``app/models/fridge.py`` (``EXPIRED_CONDITION``), so
+``/notify_expired`` and ``DELETE /delete_expired_products`` never disagree.
+"""
 
 from __future__ import annotations
 

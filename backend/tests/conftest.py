@@ -163,3 +163,24 @@ def add_fridge_items(db_client):
         return item
 
     return _add
+
+
+@pytest.fixture()
+def add_relative_fridge_items(db):
+    """Insert fridge items dated relative to the database clock (``CURRENT_DATE``).
+
+    The expiry rule is decided by PostgreSQL (``expiration_date < CURRENT_DATE``), so the
+    boundary cases use the same clock: a Python ``date.today()`` in a test would also
+    depend on the time zone of the test process.
+    """
+
+    def _add(user_id: int, product_name: str, day_offset: int, quantity: int = 1) -> None:
+        db.execute(
+            """
+            INSERT INTO fridge_items (user_id, product_name, expiration_date, quantity)
+            VALUES (%s, %s, CURRENT_DATE + %s, %s)
+            """,
+            (user_id, product_name, day_offset, quantity),
+        )
+
+    return _add

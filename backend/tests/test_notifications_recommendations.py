@@ -76,6 +76,33 @@ def test_delete_expired_touches_only_the_user_from_the_token(
     assert remaining == ["old bread"]
 
 
+def test_notify_expired_and_delete_expired_products_use_one_rule(
+    db_client, register_user, add_relative_fridge_items
+):
+    """Both addresses share one predicate: what is reported is exactly what is deleted."""
+    user_id, token = register_user()
+    add_relative_fridge_items(user_id, "sour milk", -1)
+    add_relative_fridge_items(user_id, "expires today", 0)
+    add_relative_fridge_items(user_id, "fresh bread", 1)
+
+    notify = db_client.get("/notify_expired", headers=_auth(token))
+    assert notify.status_code == 200
+    reported = [product["name"] for product in notify.get_json()["expired_products"]]
+    assert reported == ["sour milk"]
+
+    response = db_client.delete("/delete_expired_products")
+    assert response.status_code == 200
+    assert response.get_json() == {"message": f"Deleted {len(reported)} expired product(s)"}
+
+    # A product that expires today is still usable, so the deletion keeps it as well.
+    remaining = {item["product_name"] for item in db_client.get("/fridge_items").get_json()}
+    assert remaining == {"expires today", "fresh bread"}
+
+    # Nothing is left to report: the notification and the deletion look at the same rows.
+    after = db_client.get("/notify_expired", headers=_auth(token))
+    assert after.get_json() == {"message": "No expired products found"}
+
+
 def test_suggest_recipes_uses_the_expired_products(db_client, register_user, add_fridge_items, db):
     user_id, token = register_user()
     db_client.post("/recipes", json=MILK_RECIPE)

@@ -108,6 +108,19 @@ python worker.py --once                 # один проход
 python worker.py --interval-minutes 60  # цикл по расписанию
 ```
 
+### Просроченные продукты
+
+«Просрочен» — значит срок истёк до сегодняшнего дня: продукт со сроком «сегодня» ещё
+годен. Правило задано один раз (`EXPIRED_CONDITION` в `app/models/fridge.py`) и считается
+по дате базы данных (`CURRENT_DATE`), а не по часам web-процесса: сервис и база могут жить
+в разных часовых поясах, иначе `GET /notify_expired` и `DELETE /delete_expired_products`
+расходились бы около полуночи. Тем же правилом пользуются `DELETE /delete_expired`,
+`GET /suggest_recipes` и воркер уведомлений.
+
+Проверяется кейсами `test_delete_expired_products_uses_the_database_date_as_the_boundary`
+(граница «вчера / сегодня / завтра» и повторное удаление) и
+`test_notify_expired_and_delete_expired_products_use_one_rule` (отчёт и удаление совпадают).
+
 ### Модуль рекомендаций (заглушка ML)
 
 `app/ml` — минимальная рабочая версия рекомендательного модуля из `ml_planning/ml_plan`
@@ -139,21 +152,21 @@ SMART_RECOMMENDATIONS_NEIGHBOURS=10  # сколько соседей рассм�
 действительное обучение SBERT на истории выдач, полноценная морфология, метрики качества.
 
 
-Набор — 44 кейса в 9 файлах: по 1–2 кейса на каждый из 19 адресов (успех + отказ), отдельный
+Набор — 46 кейсов в 9 файлах: по 1–3 кейса на каждый из 19 адресов (успех + отказ), отдельный
 файл `tests/test_database.py` про саму схему БД и два файла про заглушку ML-модуля
 (`tests/test_ml_engine.py` без базы и `tests/test_smart_recommendations.py` против неё).
-13 кейсов идут без базы, 31 — против PostgreSQL.
+13 кейсов идут без базы, 33 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 13 passed, 31 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 13 passed, 33 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 44 passed
+                                # с БД: 46 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`44 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`46 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
@@ -162,7 +175,7 @@ black --check app main.py worker.py tests
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
   Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
-  и `python -m pytest` (44 кейса, DB-часть идёт против сервисной базы `recipes_test`;
+  и `python -m pytest` (46 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
   файл `tests/test_database.py` проверяет саму схему БД `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).
