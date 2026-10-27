@@ -20,7 +20,7 @@ backend/
 │   ├── serializers.py # date/datetime/строки -> JSON (имена колонок -> имена полей API)
 │   ├── embeddings.py  # эмбеддинги (ленивая загрузка, включаются EMBEDDINGS_ENABLED)
 │   ├── ml/            # заглушка ML-модуля: предобработка, векторизация, KNN, фильтрация
-│   ├── schema.sql     # DDL: 8 таблиц, индексы, 2 триггера истории (идемпотентный)
+│   ├── schema.sql     # DDL: 9 таблиц, индексы, 3 триггера (идемпотентный)
 │   ├── migrate.py     # миграции: python -m app.migrate + журнал schema_migrations
 │   ├── models/        # SQL-слой: по модулю на таблицу, только параметризованные запросы
 │   ├── services/      # бизнес-логика
@@ -51,18 +51,29 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
 
 ### Схема БД
 
-Структура соответствует `docs/db_scheme.png` (8 таблиц):
+Структура соответствует `docs/db_scheme.png` (9 таблиц; подробное описание каждой колонки,
+индекса и триггера — [docs/db_schema.md](docs/db_schema.md)):
 
 | Таблица | Назначение |
 |---|---|
 | `users` | пользователи: `username`, `password` (scrypt-хэш), `email`, `allergies`/`preferences` (термины через запятую) |
-| `recipes` | рецепты: `recipe_name`, `ingredients`, `instruction`, `difficulty_level` |
+| `recipes` | рецепты: `recipe_name`, `ingredients`, `instruction`, `difficulty_level`, `source_url` (ключ импорта), `created_at`/`updated_at` |
+| `recipe_ingredients` | ингредиенты рецепта по строкам: `ingredient_name`, `quantity_text`, `sort_order` |
 | `fridge_items` | продукты: `item_id` (ключ), `user_id`, `product_name`, `expiration_date`, `quantity`, `last_added` |
-| `favorite_recipes` | избранные рецепты пользователя |
+| `favorite_recipes` | избранные рецепты пользователя (`created_at` — порядок выдачи) |
 | `generated_recipes` | что именно выдавали пользователю (`/suggest_recipes`, `/recommend_recipes`) |
 | `user_allergy_preferences` | аллергии пользователя, по строке на термин |
 | `fridge_item_versions` | история версий продукта (наполняется триггером) |
 | `fridge_item_audit` | аудит действий с продуктами: `old_values`/`new_value` в JSONB |
+
+Расширения под импорт датасета povarenok (подробно — [docs/db_schema.md](docs/db_schema.md)):
+
+- `recipes.source_url` — естественный ключ импортированного рецепта (`UNIQUE`; у ручных рецептов
+  `NULL`, поэтому повторный импорт идемпотентен: `ON CONFLICT (source_url) DO NOTHING`);
+- `recipe_ingredients` — ингредиенты рецепта по строкам (`ingredient_name`, `quantity_text`,
+  `sort_order`): словарь `{ингредиент: количество}` из датасета, разложенный по таблице;
+- `recipes.created_at`/`updated_at` и `favorite_recipes.created_at` — метки времени;
+  `updated_at` обновляет триггер `recipes_updated_at_trigger`, а не код приложения.
 
 Осознанные отклонения от диаграммы (они же — комментарии в `app/schema.sql`):
 
@@ -74,13 +85,16 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
 - уникальный индекс `users_email_lower_key` по `lower(email)`: контракт считает email
   регистронезависимым;
 - `NOT NULL DEFAULT current_timestamp` у timestamp-колонок (`last_added`, `action_time`,
-  `updated_at`, `generated_on`) и `NOT NULL` у `fridge_item_versions.version`;
-- `recipes.instruction` объявлена nullable, чтобы рецепт без инструкции не ломал API;
+  `updated_at`, `generated_on`, `created_at`) и `NOT NULL` у `fridge_item_versions.version`;
+- `recipes.instruction` объявлена `text` и nullable: инструкция не помещается в 100 символов, а у
+  импортированных рецептов её нет вовсе (валидация API пока ограничивает 100 символами —
+  синхронизация контракта вынесена в отдельную задачу);
 - `recipes.ingredients` названа правильно: в текстовом описании схемы (`docs/db_plan`) слово
   написано с опечаткой («igredients»), а `openapi.yaml` и SQL-запросы используют `ingredients`.
 
-Изменения структуры БД оформляются миграциями (`backend/migrations`). `app/schema.sql` — это
-целевое состояние для новой базы, миграции переведут в него уже существующую:
+Изменения структуры БД оформляются миграциями (`backend/migrations`, последняя —
+`0002_recipe_ingredients.sql`). `app/schema.sql` — это целевое состояние для новой базы, миграции
+переведут в него уже существующую:
 
 ```bash
 cd backend
@@ -125,21 +139,21 @@ SMART_RECOMMENDATIONS_NEIGHBOURS=10  # сколько соседей рассм�
 действительное обучение SBERT на истории выдач, полноценная морфология, метрики качества.
 
 
-Набор — 41 кейс в 9 файлах: по 1–2 кейса на каждый из 19 адресов (успех + отказ), отдельный
+Набор — 44 кейса в 9 файлах: по 1–2 кейса на каждый из 19 адресов (успех + отказ), отдельный
 файл `tests/test_database.py` про саму схему БД и два файла про заглушку ML-модуля
 (`tests/test_ml_engine.py` без базы и `tests/test_smart_recommendations.py` против неё).
-13 кейсов идут без базы, 28 — против PostgreSQL.
+13 кейсов идут без базы, 31 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 13 passed, 28 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 13 passed, 31 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 41 passed
+                                # с БД: 44 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`41 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`44 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
@@ -148,7 +162,7 @@ black --check app main.py worker.py tests
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
   Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
-  и `python -m pytest` (41 кейс, DB-часть идёт против сервисной базы `recipes_test`;
+  и `python -m pytest` (44 кейса, DB-часть идёт против сервисной базы `recipes_test`;
   файл `tests/test_database.py` проверяет саму схему БД `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).

@@ -3,8 +3,8 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **41 кейс в 9 файлах**. 13 кейсов работают без базы (проверка входных
-данных, работа с токеном, служебные адреса, компоненты ML-заглушки), 28 — против реальной
+**Состав набора:** **44 кейса в 9 файлах**. 13 кейсов работают без базы (проверка входных
+данных, работа с токеном, служебные адреса, компоненты ML-заглушки), 31 — против реальной
 PostgreSQL (включая саму схему БД). На каждый адрес из `openapi.yaml` приходится 1–2 кейса;
 адресов по-прежнему 19: модуль рекомендаций включается флагом `SMART_RECOMMENDATIONS_ENABLED`
 внутри `GET /recommend_recipes` (`tests/test_smart_recommendations.py`), новых маршрутов нет.
@@ -13,9 +13,9 @@ PostgreSQL (включая саму схему БД). На каждый адре
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 13 passed, 28 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 13 passed, 31 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 41 passed
+                                 # с БД: 44 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -32,14 +32,14 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_fridge.py` | 3 | 0 | 3 | холодильник и удаление просроченного |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 5 | 1 | 4 | уведомления и рекомендации |
-| `tests/test_database.py` | 8 | 0 | 8 | схема БД, ограничения, триггеры, таблицы без адресов |
+| `tests/test_database.py` | 11 | 0 | 11 | схема БД, ограничения, триггеры, таблицы без адресов |
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
-| **Всего** | **41** | **13** | **28** | |
+| **Всего** | **44** | **13** | **31** | |
 
-Проверено 16.10.2026 на ветке `feat/smart-recommendations`: без БД — `13 passed, 28 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `41 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 41 кейс повторяет CI на PostgreSQL 15:
+Проверено 27.10.2026 на ветке `feat/recipe-ingredients-schema`: без БД — `13 passed, 31 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `44 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 44 кейса повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
@@ -178,11 +178,12 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   холодильник поднимает молочные рецепты, `limit` ограничивает ответ, «холодный старт» без
   избранного строит профиль по холодильнику и не добивает список рецептами с нулевой оценкой.
 
-### `tests/test_database.py` — 8 кейсов (все с БД)
+### `tests/test_database.py` — 11 кейсов (все с БД)
 
-Файл — «исполняемая» копия схемы `docs/db_scheme.png` и проверка того, что не покрыто адресами.
+Файл — «исполняемая» копия схемы `docs/db_scheme.png` (с расширениями из `docs/db_schema.md`)
+и проверка того, что не покрыто адресами.
 
-- [x] `test_tables_columns_and_primary_keys_match_the_diagram` — ровно 8 таблиц, у каждой
+- [x] `test_tables_columns_and_primary_keys_match_the_diagram` — ровно 9 таблиц, у каждой
   колонки тип и длина как на диаграмме, первичные ключи совпадают; `cuisine_type` отсутствует.
 - [x] `test_foreign_keys_and_the_email_index_match_the_diagram` — все внешние ключи и правила
   `ON DELETE` (`CASCADE`/`SET NULL`), уникальный индекс `lower(email)` (email без учёта регистра).
@@ -207,6 +208,19 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 - [x] `test_generated_recipes_keep_what_was_offered` — `generated_recipes`: запись выдачи,
   пустая выдача ничего не пишет, несуществующий рецепт отклоняется, очистка истории,
   каскад при удалении рецепта.
+- [x] `test_recipe_ingredients_are_unique_and_cascade` — `recipe_ingredients`: ингредиенты
+  рецепта с количеством и порядком, `NULL` в количестве допустим, повтор ингредиента в одном
+  рецепте отклоняется, тот же ингредиент в другом рецепте разрешён, несуществующий рецепт
+  отклоняется внешним ключом, удаление рецепта чистит только его ингредиенты.
+- [x] `test_imported_recipes_are_unique_by_source_url` — `recipes.source_url`: два рецепта с
+  одним url отклоняются, у ручных рецептов `source_url IS NULL` и таких строк может быть
+  сколько угодно, повторная вставка с `ON CONFLICT (source_url) DO NOTHING` ничего не пишет
+  (идемпотентность импорта).
+- [x] `test_recipe_timestamps_and_the_text_instruction_are_maintained_by_the_database` —
+  `created_at`/`updated_at` заполняются базой, триггер `recipes_updated_at_trigger` двигает
+  `updated_at` при `UPDATE` и не трогает `created_at`, инструкция длиннее 100 символов
+  сохраняется целиком (колонка `text`), у импортированного рецепта `instruction`,
+  `difficulty_level` и `source_url` равны `NULL`.
 
 ## Примечания для отчётности
 
@@ -217,7 +231,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 - **Изоляция данных**: `test_delete_expired_touches_only_the_user_from_the_token` — кейс,
   доказывающий, что защищённый адрес берёт `user_id` из токена, а не из тела запроса.
 - **Фикстуры** (`tests/conftest.py`): `app`/`client` — приложение без БД; `db_app`/`db_client`/`db`
-  — приложение с БД, фасад базы для SQL-проверок и очистка всех восьми таблиц перед каждым
+  — приложение с БД, фасад базы для SQL-проверок и очистка всех девяти таблиц перед каждым
   кейсом (`TRUNCATE ... RESTART IDENTITY CASCADE`); `register_user` и `add_fridge_items` —
   подготовка данных через настоящие HTTP-запросы; `db_app_factory(**env)` собирает приложения с
   дополнительными переменными окружения — так тестируется флаг `SMART_RECOMMENDATIONS_ENABLED`
@@ -226,7 +240,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (16.10.2026, ветка `feat/smart-recommendations`): без БД —
-  `13 passed, 28 skipped` (exit 0), с PostgreSQL 15 в контейнере — `41 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 41 кейс повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (27.10.2026, ветка `feat/recipe-ingredients-schema`): без БД —
+  `13 passed, 31 skipped` (exit 0), с PostgreSQL 15 в контейнере — `44 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 44 кейса повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
