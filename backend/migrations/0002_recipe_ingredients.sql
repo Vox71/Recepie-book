@@ -63,8 +63,16 @@ ALTER TABLE IF EXISTS favorite_recipes
     ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT current_timestamp;
 
 -- The old index was (user_id); the favourites list is now ordered by created_at.
-DROP INDEX IF EXISTS favorite_recipes_user_idx;
-CREATE INDEX IF NOT EXISTS favorite_recipes_user_idx ON favorite_recipes (user_id, created_at);
+-- Guarded: on a brand-new database favorite_recipes does not exist yet.
+DO $$
+BEGIN
+    IF to_regclass('public.favorite_recipes') IS NOT NULL THEN
+        DROP INDEX IF EXISTS favorite_recipes_user_idx;
+        CREATE INDEX IF NOT EXISTS favorite_recipes_user_idx
+            ON favorite_recipes (user_id, created_at);
+    END IF;
+END
+$$;
 
 CREATE OR REPLACE FUNCTION recipes_touch_updated_at() RETURNS trigger AS $$
 BEGIN

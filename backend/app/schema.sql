@@ -102,7 +102,24 @@ CREATE TABLE IF NOT EXISTS favorite_recipes (
     CONSTRAINT favorite_recipes_user_recipe_key UNIQUE (user_id, recipe_id)
 );
 
-CREATE INDEX IF NOT EXISTS favorite_recipes_user_idx ON favorite_recipes (user_id, created_at);
+-- The index is created only when the column exists: on a database created before the
+-- change ensure_schema() cannot add favorite_recipes.created_at, and a CREATE INDEX that
+-- mentions the missing column fails even with IF NOT EXISTS (the name is checked after
+-- the statement is parsed and the column is resolved).
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'favorite_recipes'
+          AND column_name = 'created_at'
+    ) THEN
+        CREATE INDEX IF NOT EXISTS favorite_recipes_user_idx
+            ON favorite_recipes (user_id, created_at);
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS generated_recipes (
     id           serial    PRIMARY KEY,
@@ -217,7 +234,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS recipes_updated_at_trigger ON recipes;
-CREATE TRIGGER recipes_updated_at_trigger
-    BEFORE UPDATE ON recipes
-    FOR EACH ROW EXECUTE FUNCTION recipes_touch_updated_at();
+-- The trigger is created only when the column exists. On a database created before the
+-- change CREATE TABLE IF NOT EXISTS is a no-op, so ensure_schema() alone cannot add
+-- updated_at; a trigger that writes a missing field would break every UPDATE until
+-- python -m app.migrate adds the column.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'recipes' AND column_name = 'updated_at'
+    ) THEN
+        DROP TRIGGER IF EXISTS recipes_updated_at_trigger ON recipes;
+        CREATE TRIGGER recipes_updated_at_trigger
+            BEFORE UPDATE ON recipes
+            FOR EACH ROW EXECUTE FUNCTION recipes_touch_updated_at();
+    END IF;
+END
+$$;
