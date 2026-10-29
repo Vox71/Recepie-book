@@ -50,6 +50,56 @@ def test_allergy_terms_resolve_into_groups_or_stay_plain_terms():
     assert not allergens.AllergyQuery()
 
 
+def test_repeated_allergy_terms_resolve_once():
+    """A group and its alias, or the same unknown term twice, are not duplicated."""
+    assert _query("молочные продукты", "молоко", "КРЕВЕТКИ", "seafood").groups == (
+        "milk",
+        "seafood",
+    )
+    assert _query("киви", "киви").terms == ("киви",)
+
+
+def test_a_stop_word_allergy_stays_a_plain_term():
+    """``без`` has no lemma: it cannot become a group and must not silently vanish."""
+    assert _query("без") == allergens.AllergyQuery(terms=("без",))
+    assert allergens.matched_allergens(["молоко"], _query("без")) == []
+
+
+def test_matching_ignores_an_empty_or_punctuation_only_ingredient():
+    """A nameless ingredient row neither matches nor breaks the filter."""
+    milk = _query("молоко")
+    assert allergens.matched_allergens([], milk) == []
+    assert allergens.matched_allergens(["   ", "!!!"], milk) == []
+    assert allergens.matched_allergens(["молоко"], allergens.AllergyQuery()) == []
+    assert allergens.matched_allergens(["!!!", "молоко"], milk) == ["milk"]
+
+
+def test_is_safe_answers_the_opposite_of_matched_allergens():
+    """``is_safe`` is the boolean form of the filter that the module exposes."""
+    milk = _query("молоко")
+    assert allergens.is_safe(["кокосовое молоко"], milk) is True
+    assert allergens.is_safe(["молоко"], milk) is False
+    assert allergens.is_safe([], allergens.AllergyQuery()) is True
+
+
+def test_a_dictionary_term_without_lemmas_is_skipped(monkeypatch):
+    """Defensive: a term of the dictionary made of stop words does not break matching.
+
+    No group of the real dictionary has such a term, so the case uses a synthetic one:
+    it is the only way to prove that the guard of ``_term_lemmas`` works and that the
+    remaining terms of the group still match.
+    """
+    group = allergens.AllergenGroup(slug="test_stop_word", title="Тест", terms=("без", "молоко"))
+    monkeypatch.setitem(allergens.ALLERGEN_GROUPS, group.slug, group)
+    allergens._term_lemmas.cache_clear()
+    try:
+        assert len(allergens._term_lemmas(group.slug)) == 1
+        assert allergens._group_in("молоко", group.slug) is True
+        assert allergens._group_in("без", group.slug) is False
+    finally:
+        allergens._term_lemmas.cache_clear()
+
+
 PRODUCT_CASES = (
     ("Молоко 3,2%", {"milk"}),
     ("Сливки 10%", {"milk"}),
@@ -172,6 +222,17 @@ def _insert_recipe(db, name: str, ingredients: str, ingredient_rows: list[str]) 
             (recipe_id, ingredient, order),
         )
     return recipe_id
+
+
+def test_ingredient_names_falls_back_to_the_text_when_a_row_has_no_id():
+    """A recipe without an id (not from the database) is filtered by its text."""
+    assert allergen_service.ingredient_names({"id": None, "ingredients": "молоко, соль"}) == [
+        "молоко, соль"
+    ]
+    assert allergen_service.ingredient_names({"id": 7, "ingredients": "молоко"}, {7: ["соль"]}) == [
+        "соль"
+    ]
+    assert allergen_service.ingredient_names({"id": 7, "ingredients": "молоко"}, {}) == ["молоко"]
 
 
 def test_the_filter_reads_recipe_ingredients_instead_of_the_text(db):

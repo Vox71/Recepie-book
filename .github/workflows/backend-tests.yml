@@ -83,5 +83,10 @@ jobs:
           python -m app.ml.model --out /tmp/v1.json
           python -m app.ml.evaluate --model /tmp/v1.json
 
-      - name: Run the test suite
-        run: python -m pytest
+      # Задача 7 спринта 2: тот же прогон под coverage (statement + branch, порог 80 %
+      # из backend/pyproject.toml). coverage report возвращает 1, если порог не достигнут,
+      # поэтому просадка покрытия ломает CI, а не остаётся незамеченной.
+      - name: Run the test suite with coverage
+        run: |
+          coverage run -m pytest
+          coverage report

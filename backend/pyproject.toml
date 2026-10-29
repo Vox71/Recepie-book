@@ -2,6 +2,23 @@
 line-length = 100
 target-version = ["py311"]
 
+# Задача 7 спринта 2: покрытие измеряется вместе с ветвями (docs/test-coverage.md).
+# source = app, поэтому тесты, conftest и сам main.py в метрику не попадают, а
+# --fail-under не даёт заменить тесты «зелёным» прогоном без базы.
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+precision = 1
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

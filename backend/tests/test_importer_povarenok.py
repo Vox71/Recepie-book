@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import io
 import json
+import runpy
+import sys
 import zipfile
 from pathlib import Path
 
@@ -326,3 +328,12 @@ def test_cli_imports_the_sample(db, database_url, monkeypatch):
     # recipes.source_url is varchar(255), recipes.recipe_name is varchar(200).
     assert record_from_row({"url": "https://example.com/" + "1" * 300, "name": "Суп"}) is None
     assert record_from_row({"url": "https://example.com/1", "name": "я" * 201}) is None
+
+
+def test_module_entry_point_runs_the_cli(monkeypatch, capsys):
+    """``python -m app.importer`` is the documented entry point, not only ``-m ...cli``."""
+    monkeypatch.setattr(sys, "argv", ["app.importer", "--help"])
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_module("app.importer", run_name="__main__")
+    assert exit_info.value.code == 0
+    assert "usage" in capsys.readouterr().out.lower()
