@@ -43,6 +43,42 @@ def test_add_and_list_fridge_items(db_client, register_user, db):
     assert item["quantity"] == row["quantity"] == 2
 
 
+def test_list_fridge_items_returns_one_page(db_client, register_user, add_fridge_items):
+    """``GET /fridge_items?limit=&offset=``: the defaults return the whole (small) list."""
+    user_id, _ = register_user()
+    names = ["milk", "bread", "cheese"]
+    for offset, name in enumerate(names):
+        add_fridge_items(user_id, name, TOMORROW + timedelta(days=offset))
+
+    everything = db_client.get("/fridge_items").get_json()
+    assert [item["product_name"] for item in everything] == names
+
+    page = db_client.get("/fridge_items?limit=1&offset=1").get_json()
+    assert [item["product_name"] for item in page] == ["bread"]
+
+    tail = db_client.get("/fridge_items?offset=2").get_json()
+    assert [item["product_name"] for item in tail] == ["cheese"]
+    assert db_client.get("/fridge_items?offset=3").get_json() == []
+
+
+def test_list_fridge_items_validates_the_pagination(db_client):
+    """A wrong limit/offset is a 400 with the usual error object, never a database error."""
+    for query in (
+        "limit=0",
+        "limit=-1",
+        "limit=abc",
+        "limit=201",  # MAX_PAGE_LIMIT
+        "offset=-1",
+        "offset=abc",
+        "offset=1000001",  # MAX_PAGE_OFFSET
+    ):
+        response = db_client.get(f"/fridge_items?{query}")
+        assert response.status_code == 400, query
+        assert "error" in response.get_json(), query
+
+    assert db_client.get("/fridge_items?limit=200&offset=0").status_code == 200
+
+
 def test_add_fridge_items_validates_the_payload(db_client, register_user):
     """The body is an array; every problem must be a 400, never a database error."""
     user_id, _ = register_user()

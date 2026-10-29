@@ -10,15 +10,23 @@ from flask import Blueprint, jsonify
 
 from ..context import get_db
 from ..services import fridge_service
-from ..validation import json_array_body
+from ..validation import (
+    DEFAULT_PAGE_LIMIT,
+    MAX_PAGE_LIMIT,
+    MAX_PAGE_OFFSET,
+    json_array_body,
+    query_int,
+)
 
 bp = Blueprint("fridge", __name__)
 
 
 @bp.get("/fridge_items")
 def list_items() -> tuple:
-    """Return fridge items of every user."""
-    return jsonify(fridge_service.list_items(get_db())), 200
+    """Return a page of fridge items of every user: ``?limit=&offset=``."""
+    limit = query_int("limit", default=DEFAULT_PAGE_LIMIT, minimum=1, maximum=MAX_PAGE_LIMIT)
+    offset = query_int("offset", default=0, minimum=0, maximum=MAX_PAGE_OFFSET)
+    return jsonify(fridge_service.list_items(get_db(), limit=limit, offset=offset)), 200
 
 
 @bp.post("/fridge_items")

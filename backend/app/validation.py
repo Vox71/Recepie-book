@@ -25,7 +25,10 @@ MIN_PASSWORD_LENGTH = 8
 MAX_USERNAME_LENGTH = 80  # users.username
 MAX_EMAIL_LENGTH = 120  # users.email
 MAX_RECIPE_NAME_LENGTH = 200  # recipes.recipe_name
-MAX_INSTRUCTION_LENGTH = 100  # recipes.instruction
+# recipes.instruction is text: the varchar(100) of the diagram could not hold a real
+# instruction, so the API limit follows the column (and openapi.yaml) instead of the
+# diagram. Kept as a separate name because it reads better at the call site.
+MAX_INSTRUCTION_LENGTH = MAX_TEXT_FIELD_LENGTH  # recipes.instruction
 MAX_DIFFICULTY_LENGTH = 50  # recipes.difficulty_level
 MAX_PRODUCT_NAME_LENGTH = 100  # fridge_items.product_name
 MAX_TERM_LENGTH = 100  # user_allergy_preferences.allergy_name

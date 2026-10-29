@@ -54,13 +54,18 @@ def test_create_recipe_validates_the_payload(db_client):
     bad_payloads += [
         {**RECIPE, "name": ["not", "a", "string"]},
         {**RECIPE, "name": "x" * 201},  # recipes.recipe_name is varchar(200)
-        {**RECIPE, "instructions": "x" * 101},  # recipes.instruction is varchar(100)
+        {**RECIPE, "instructions": "x" * 10001},  # MAX_TEXT_FIELD_LENGTH (text column)
         {**RECIPE, "difficulty_level": "x" * 51},  # varchar(50)
     ]
     for payload in bad_payloads:
         response = db_client.post("/recipes", json=payload)
         assert response.status_code == 400, payload
         assert "error" in response.get_json()
+
+    # recipes.instruction is text, so an instruction longer than the old 100 characters
+    # of the diagram is accepted (openapi.yaml declares maxLength 10000).
+    long_instruction = {**RECIPE, "name": "Long recipe", "instructions": "x" * 5000}
+    assert db_client.post("/recipes", json=long_instruction).status_code == 201
 
 
 def test_list_recipes_returns_every_recipe(db_client):
