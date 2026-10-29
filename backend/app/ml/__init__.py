@@ -10,9 +10,14 @@ preprocessing                   ``app.ml.preprocessing``
 vectorization                   ``app.ml.vectorizer``
 training sample                 ``app.ml.engine._training_sample``
 k nearest neighbours (KNN)      ``app.ml.knn``
-filtering (allergens)           ``app.ml.engine._reject_allergens``
+filtering (allergens)           ``app.ml.allergens`` (dictionary and filter,
+                                driven by ``app.services.allergen_service``)
 context adaptation (fridge)     ``app.ml.engine.recommend_safe_recipes``
 ==============================  ==========================================
+
+The allergen dictionary of ``app.ml.allergens`` is measured on a hand-labelled sample
+(``tests/data/allergen_labeled_sample.json``) by ``python -m app.ml.allergen_eval``;
+the numbers of the last run are in ``docs/allergen-filter.md``.
 
 The package is deliberately *less than* an MVP: the pipeline is complete and answers
 real requests, but the lemmatizer is a suffix table, KNN is plain Python and SBERT is
