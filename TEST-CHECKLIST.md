@@ -3,22 +3,23 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **75 кейсов в 12 файлах**. 28 кейсов работают без базы (проверка входных
-данных, работа с токеном, служебные адреса, компоненты ML-заглушки, словарь аллергенов и его
-метрики, разбор датасета и CLI импорта), 47 — против реальной PostgreSQL (включая саму схему
-БД). На каждый адрес из
+**Состав набора:** **84 кейса в 13 файлах**. 36 кейсов работают без базы (проверка входных
+данных, работа с токеном, служебные адреса, компоненты ML-модуля, словарь аллергенов и его
+метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета и CLI импорта), 48 —
+против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
 `openapi.yaml` приходится 1–3 кейса; адресов теперь 22 — три из них про избранное
 (`/favorite_recipes`). Модуль рекомендаций по-прежнему включается флагом
 `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
-(`tests/test_smart_recommendations.py`), а импорт датасета — это CLI, а не новый маршрут.
+(`tests/test_smart_recommendations.py`), а импорт датасета и обучение модели — это CLI, а не
+новые маршруты.
 
 ## Как запускать
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 28 passed, 47 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 36 passed, 48 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 75 passed
+                                 # с БД: 84 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -41,11 +42,12 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
 | `tests/test_allergens.py` | 10 | 7 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients` |
-| **Всего** | **75** | **28** | **47** | |
+| `tests/test_recommendation_model.py` | 9 | 8 | 1 | модель v1: веса IDF, артефакт, откат на заглушку, метрики ранжирования, CLI |
+| **Всего** | **84** | **36** | **48** | |
 
-Проверено 29.10.2026 на ветке `feat/allergen-filter`: без БД — `28 passed, 47 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `75 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 75 кейсов повторяет CI на PostgreSQL 15:
+Проверено 29.10.2026 на ветке `feat/recommendation-model-v1`: без БД — `36 passed, 48 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `84 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 84 кейса повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
@@ -256,6 +258,37 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   холодильник поднимает молочные рецепты, `limit` ограничивает ответ, «холодный старт» без
   избранного строит профиль по холодильнику и не добивает список рецептами с нулевой оценкой.
 
+### `tests/test_recommendation_model.py` — 9 кейсов (8 без БД)
+
+Модель рекомендаций v1 (задачи 6.0 и 6.2): артефакт TF-IDF, откат на заглушку и метрики
+ранжирования. Числа прогона — в `docs/recommendation-model.md`.
+
+- [x] `test_fit_weights_rare_lemmas_above_common_ones` — `idf = ln((1+N)/(1+df)) + 1`: редкая
+  лемма весит больше частой (`sugar > rice > milk` для корпуса из четырёх рецептов), незнакомое
+  слово получает `default_idf` (наибольший вес), повтор продукта в тексте вес не удваивает,
+  пустой корпус — `ValueError`.
+- [x] `test_artifact_round_trip_and_the_stat_cache` — `save` создаёт каталог и пишет JSON с
+  `version`/`documents`/`source`; `load` возвращает те же веса; `load_cached` отдаёт тот же
+  объект из кэша и перечитывает файл после перезаписи (переобучение без рестарта).
+- [x] `test_missing_or_broken_artifact_keeps_the_bag_of_lemmas_fallback` — критерий приёмки:
+  отсутствующий файл, битый JSON, чужая версия и пустой словарь весов → `None`, сервис работает
+  на bag-of-lemmas; `SMART_RECOMMENDATIONS_ARTIFACT` попадает в настройки.
+- [x] `test_engine_ranks_with_the_model_when_the_artifact_exists` (2 параметра) — с артефактом
+  `vectorizer=tf-idf-v1`, `model_documents=3` и первым идёт рецепт с редким шафраном; без
+  артефакта — `sparse-bow`, `model_documents=None` и прежний порядок (первым рис).
+- [x] `test_leave_one_ingredient_out_protocol_counts_every_metric` — арифметика протокола на
+  корпусе с известным ответом: из шести возможных запросов посчитаны четыре, два пропущены
+  (продукт есть только в исходном рецепте), `P@1 = R@5 = Hit@5 = MRR = 1.0`, `P@5 = 0.2`,
+  разбивка по частоте — группа `rare`.
+- [x] `test_v1_is_better_than_the_baseline_on_the_committed_corpus` — критерий задачи на корпусе
+  репозитория (120 рецептов): `P@5` и `MRR` у v1 выше, `Hit@5` не ниже.
+- [x] `test_cli_prints_the_numbers_and_gates_a_regression` — `python -m app.ml.model` пишет
+  артефакт, `python -m app.ml.evaluate` печатает таблицу и вердикт; на корпусе без выигрыша
+  код возврата 1 (если не передан `--allow-regression`), на отсутствующем файле — 1.
+- [x] `test_the_corpus_is_read_from_the_database` (БД) — `corpus.from_database`: имена берутся из
+  `recipe_ingredients`, рецепт без ингредиентов пропускается, текстовая колонка работает как
+  запасной вариант.
+
 ### `tests/test_database.py` — 11 кейсов (все с БД)
 
 Файл — «исполняемая» копия схемы `docs/db_scheme.png` (с расширениями из `docs/db_schema.md`)
@@ -364,7 +397,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (29.10.2026, ветка `feat/favorites-api`): без БД —
-  `28 passed, 47 skipped` (exit 0), с PostgreSQL 15 в контейнере — `75 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 75 кейсов повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (29.10.2026, ветка `feat/recommendation-model-v1`): без БД —
+  `36 passed, 48 skipped` (exit 0), с PostgreSQL 15 в контейнере — `84 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 84 кейса повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
