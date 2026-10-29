@@ -1,0 +1,6 @@
+# Optional dependencies of the povarenok dataset import (sprint 2, task 2).
+# They are NOT part of the production image: `python -m app.importer` is a local (or
+# one-off container) command, and parquet is the only heavy part of it. Downloading the
+# dataset needs nothing but the standard library (app/importer/source.py).
+# Install with: pip install -r requirements-ml.txt
+pyarrow==17.0.0

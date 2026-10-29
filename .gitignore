@@ -206,6 +206,12 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Raw povarenok dataset and model artifacts (licence is not stated, see
+# docs/sprint-2-plan.md): they are downloaded or built locally and never committed.
+backend/data/
+backend/app/ml/artifacts/
+*.parquet
+
 # PyPI configuration file
 .pypirc
 
