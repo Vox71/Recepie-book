@@ -3,8 +3,9 @@
 This file is the executable form of the ER diagram and covers everything that no
 endpoint touches: column types, keys, the triggers that fill the fridge history and
 ``recipes.updated_at``, and the tables of the diagram that have no API route yet
-(``favorite_recipes``, ``generated_recipes`` and ``recipe_ingredients``, used
-through ``app.models``).
+(``generated_recipes`` and ``recipe_ingredients``, used through ``app.models``).  It
+also pins the constraints of ``favorite_recipes`` (unique pair, cascade) that the
+routes of ``/favorite_recipes`` rely on.
 
 PostgreSQL is required, exactly like in the other database-backed tests.
 """
@@ -382,7 +383,7 @@ def test_fridge_history_survives_the_delete_of_a_product_and_of_a_user(
 
 
 def test_favorite_recipes_are_unique_and_cascade(db_client, register_user, db):
-    """favorite_recipes has no API route yet, so the model functions are its API."""
+    """favorite_recipes: the unique pair and the ON DELETE CASCADE behind the API."""
     user_id, _ = register_user()
     recipe_id = _recipe_id(db_client, db)
 

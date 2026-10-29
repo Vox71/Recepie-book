@@ -13,6 +13,7 @@ tags:
   - name: Auth
   - name: Users
   - name: Recipes
+  - name: Favorites
   - name: Fridge
   - name: Notifications
   - name: Recommendations
@@ -272,6 +273,140 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
+
+  /favorite_recipes:
+    get:
+      tags: [Favorites]
+      summary: Получить страницу избранных рецептов
+      description: >
+        Избранное текущего пользователя: user_id берётся только из токена, передать его
+        в запросе нельзя. Список отдаётся страницами (CONTRIBUTION.md §4): limit — размер
+        страницы (по умолчанию 50, максимум 200), offset — сколько записей пропустить.
+        Порядок — от новых к старым (favorite_recipes.created_at), при равных метках —
+        по убыванию favorite_recipes.id.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Размер страницы
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          description: Сколько записей пропустить
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
+            default: 0
+      responses:
+        '200':
+          description: Страница избранных рецептов (пустой массив, если избранного нет)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recipe'
+        '400':
+          description: limit или offset не целое число либо вне допустимого диапазона
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Токен не передан, недействителен или просрочен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Favorites]
+      summary: Добавить рецепт в избранное
+      description: >
+        Повторное добавление идемпотентно: пара (user_id, recipe_id) уникальна
+        (favorite_recipes_user_recipe_key), поэтому дубль не создаётся и ответ в этом
+        случае тоже 201 — с сообщением «уже в избранном». Поле user_id в теле
+        игнорируется: пользователь всегда берётся из токена.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoriteInput'
+      responses:
+        '201':
+          description: Рецепт добавлен (или уже был в избранном)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Тело не объект или recipe_id не целое положительное число
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Токен не передан, недействителен или просрочен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Рецепт с таким id не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /favorite_recipes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Идентификатор рецепта (recipes.id)
+        schema:
+          type: integer
+          format: int64
+
+    delete:
+      tags: [Favorites]
+      summary: Убрать рецепт из избранного
+      description: >
+        Удаляется только запись текущего пользователя. Избранное другого пользователя
+        для него не существует, поэтому ответ — 404, а не 403: наличие чужой записи
+        не раскрывается.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Рецепт убран из избранного
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Токен не передан, недействителен или просрочен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Рецепта нет в избранном текущего пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /notify_expired:
     get:
@@ -591,6 +726,15 @@ components:
         difficulty_level:
           type: string
           maxLength: 50
+
+    FavoriteInput:
+      type: object
+      required: [recipe_id]
+      properties:
+        recipe_id:
+          type: integer
+          minimum: 1
+          description: Идентификатор рецепта (recipes.id); владелец берётся из токена.
 
     FridgeItem:
       type: object

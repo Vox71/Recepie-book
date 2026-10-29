@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from flask import Flask
 
-from . import auth, fridge, notifications, recommendations, recipes, system, users
+from . import auth, favorites, fridge, notifications, recommendations, recipes, system, users
 
 BLUEPRINTS = (
     system.bp,
     auth.bp,
     users.bp,
     recipes.bp,
+    favorites.bp,
     fridge.bp,
     notifications.bp,
     recommendations.bp,

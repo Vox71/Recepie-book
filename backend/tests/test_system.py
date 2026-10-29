@@ -16,6 +16,8 @@ EXPECTED_RULES = {
     "/user_preferences": {"POST"},
     "/recipes": {"GET", "POST"},
     "/recipes/<int:recipe_id>": {"GET", "PUT", "DELETE"},
+    "/favorite_recipes": {"GET", "POST"},
+    "/favorite_recipes/<int:recipe_id>": {"DELETE"},
     "/fridge_items": {"GET", "POST"},
     "/delete_expired_products": {"DELETE"},
     "/notify_expired": {"GET"},
@@ -55,7 +57,7 @@ def test_ready_reports_a_healthy_database(db_client):
 
 
 def test_registered_routes_match_the_contract(app):
-    """Guards the promise "19 addresses of openapi.yaml are implemented"."""
+    """Guards the promise "22 addresses of openapi.yaml are implemented"."""
     routes: dict[str, set[str]] = {}
     for rule in app.url_map.iter_rules():
         if rule.endpoint == "static":

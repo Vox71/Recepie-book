@@ -7,6 +7,20 @@ from ..models.recipes import RECIPE_COLUMNS
 
 FAVORITE_COLUMNS = "id, user_id, recipe_id"
 
+# The API answers with recipes, not with rows of favorite_recipes, so both tables are
+# joined and the recipe columns are prefixed (``r.id`` would otherwise clash with
+# ``f.id``).  The list is newest first: favorite_recipes.created_at (schema.sql) is the
+# moment the recipe was added, and favorite_recipes.id is the tiebreaker because
+# current_timestamp is the start of the transaction, so two rows added in quick
+# succession can share it.
+FAVORITE_RECIPES_SQL = f"""
+    SELECT {", ".join(f"r.{column.strip()}" for column in RECIPE_COLUMNS.split(","))}
+    FROM favorite_recipes AS f
+    JOIN recipes AS r ON r.id = f.recipe_id
+    WHERE f.user_id = %s
+    ORDER BY f.created_at DESC, f.id DESC
+"""
+
 
 def add_favorite(db: Database, user_id: int, recipe_id: int) -> bool:
     """Mark a recipe as favourite; ``False`` when the pair already exists."""
@@ -26,15 +40,18 @@ def remove_favorite(db: Database, user_id: int, recipe_id: int) -> bool:
 
 
 def list_favorites(db: Database, user_id: int) -> list[dict]:
-    """Return the favourite recipes of ``user_id`` as ``recipes`` rows."""
-    sql = f"""
-        SELECT {", ".join(f"r.{column.strip()}" for column in RECIPE_COLUMNS.split(","))}
-        FROM favorite_recipes AS f
-        JOIN recipes AS r ON r.id = f.recipe_id
-        WHERE f.user_id = %s
-        ORDER BY r.id
+    """Return every favourite recipe of ``user_id`` (newest first).
+
+    Used by the recommendation module, which needs the whole profile rather than a
+    page; ``GET /favorite_recipes`` uses :func:`list_favorites_page`.
     """
-    return db.fetch_all(sql, (user_id,))
+    return db.fetch_all(FAVORITE_RECIPES_SQL, (user_id,))
+
+
+def list_favorites_page(db: Database, user_id: int, *, limit: int, offset: int) -> list[dict]:
+    """Return one page of favourite recipes of ``user_id``, newest first."""
+    sql = FAVORITE_RECIPES_SQL + " LIMIT %s OFFSET %s"
+    return db.fetch_all(sql, (user_id, limit, offset))
 
 
 def is_favorite(db: Database, user_id: int, recipe_id: int) -> bool:
