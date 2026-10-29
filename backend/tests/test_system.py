@@ -76,3 +76,33 @@ def test_unknown_address_and_method_return_an_error_object(client):
     wrong_method = client.delete("/login")
     assert wrong_method.status_code == 405
     assert set(wrong_method.get_json()) == {"error"}
+
+
+def test_rate_limit_blocks_the_third_registration(db_app_factory):
+    """``RATE_LIMIT_ENABLED`` turns the per-IP limiter on (CONTRIBUTION.md §3).
+
+    The limit is counted per client key, so a different ``X-Forwarded-For`` (a proxy in
+    front of the application) has its own window and is not blocked.
+    """
+    limited = db_app_factory(RATE_LIMIT_ENABLED="true", RATE_LIMIT_MAX_REQUESTS="2")
+    client = limited.test_client()
+
+    def register(number: int, headers: dict | None = None):
+        return client.post(
+            "/register",
+            json={
+                "username": f"limited{number}",
+                "email": f"limited{number}@example.com",
+                "password": "sup3r-secret-password",
+            },
+            headers=headers or {},
+        )
+
+    assert register(1).status_code == 201
+    assert register(2).status_code == 201
+    blocked = register(3)
+    assert blocked.status_code == 429
+    assert set(blocked.get_json()) == {"error"}
+
+    forwarded = {"X-Forwarded-For": "10.0.0.7, 172.16.0.1"}
+    assert register(4, forwarded).status_code == 201

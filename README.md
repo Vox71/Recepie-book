@@ -273,32 +273,53 @@ python -m app.ml.allergen_eval --json   # то же машинно-читаем�
 команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
 
 
-Набор — 85 кейсов в 13 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
+Набор — 93 кейса в 13 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
 файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, четыре
 файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`,
 `test_recommendation_model.py`) и `tests/test_importer_povarenok.py` про импорт датасета.
-36 кейсов идут без базы, 49 — против PostgreSQL.
+43 кейса идут без базы, 50 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 36 passed, 49 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 43 passed, 50 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 85 passed
+                                # с БД: 93 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
+
+# покрытие и порог 80 % (docs/test-coverage.md)
+TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
+  coverage run -m pytest && coverage report
 ```
 
-Полный прогон против реальной базы (`85 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`93 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
+
+### Покрытие тестами
+
+Измерено `coverage.py` на полном наборе с PostgreSQL: **87,7 % строк** (2055 из 2342) и
+**81,1 % ветвей** (684 из 843), комбинированное покрытие — 86,0 %. Порог 80 % записан в
+`backend/pyproject.toml` (`[tool.coverage.report] fail_under`) и проверяется в CI, поэтому
+просадка покрытия ломает сборку.
+
+Фильтр аллергенов (`app/ml/allergens.py` и `app/services/allergen_service.py`) покрыт на 100 %
+и по строкам, и по ветвям — это осознанное требование: цена ошибки здесь не сломанная страница,
+а аллерген в рекомендации. Модули задачи 5 (`recipe_presenter`, `serializers`) — тоже 100 %.
+
+Что не покрыто и почему (эмбеддинги требуют `requirements-ml.txt`, `migrate.py` — отдельной
+пустой базы, `fridge_history.py` — мёртвый код) — в [docs/test-coverage.md](docs/test-coverage.md),
+там же соответствие ГОСТ Р 56920/56921/56922-2016, ГОСТ 34.603-92, ГОСТ 19.301-79 и
+ГОСТ Р ИСО/МЭК 25010-2015.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
 
 ### CI (GitHub Actions)
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
-  Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
-  и `python -m pytest` (75 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
-  файл `tests/test_database.py` проверяет саму схему БД `docs/db_scheme.png` и триггеры истории).
+  Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`,
+  обучение модели с проверкой метрик и весь набор под `coverage` (93 кейса, DB-часть идёт против
+  сервисной базы `recipes_test`; файл `tests/test_database.py` проверяет саму схему БД
+  `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).
 - **Docker-пайплайн** (`.github/workflows/docker-image.yml`) — на push в `main`: сборка образов,

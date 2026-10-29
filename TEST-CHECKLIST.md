@@ -3,9 +3,9 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **85 кейсов в 13 файлах**. 36 кейсов работают без базы (проверка входных
+**Состав набора:** **93 кейса в 13 файлах**. 43 кейса работают без базы (проверка входных
 данных, работа с токеном, служебные адреса, компоненты ML-модуля, словарь аллергенов и его
-метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета и CLI импорта), 49 —
+метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета и CLI импорта), 50 —
 против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
 `openapi.yaml` приходится 1–3 кейса; адресов теперь 22 — три из них про избранное
 (`/favorite_recipes`). Модуль рекомендаций по-прежнему включается флагом
@@ -17,20 +17,25 @@
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 36 passed, 49 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 43 passed, 50 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 85 passed
+                                 # с БД: 93 passed
+
+# покрытие (statement + branch) и порог 80 %, см. docs/test-coverage.md
+TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
+  coverage run -m pytest && coverage report
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
-(`.github/workflows/backend-tests.yml`) поднимает PostgreSQL 15 и запускает `python -m pytest`
-на каждый push в `main` и на каждый pull request.
+(`.github/workflows/backend-tests.yml`) поднимает PostgreSQL 15, запускает набор под `coverage`
+на каждый push в `main` и на каждый pull request и падает, если покрытие ниже порога 80 %
+(см. `[tool.coverage.report]` в `backend/pyproject.toml`).
 
 ## Итог последнего прогона
 
 | Файл | Кейсов | Без БД | С БД | Тема |
 |---|---|---|---|---|
-| `tests/test_system.py` | 6 | 5 | 1 | служебные адреса, список маршрутов, формат ошибок |
+| `tests/test_system.py` | 7 | 6 | 1 | служебные адреса, список маршрутов, формат ошибок, лимит запросов (429) |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
 | `tests/test_recipes.py` | 9 | 0 | 9 | CRUD рецептов, пагинация списка, поля карточки рецепта |
 | `tests/test_favorites.py` | 4 | 0 | 4 | избранное: JWT, порядок, идемпотентность |
@@ -38,18 +43,19 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 6 | 1 | 5 | уведомления и рекомендации |
 | `tests/test_database.py` | 11 | 0 | 11 | схема БД, ограничения, триггеры, таблицы без адресов |
-| `tests/test_importer_povarenok.py` | 11 | 8 | 3 | импорт датасета: разбор, форматы, идемпотентность, CLI |
+| `tests/test_importer_povarenok.py` | 12 | 9 | 3 | импорт датасета: разбор, форматы, идемпотентность, CLI и точка входа `python -m app.importer` |
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
-| `tests/test_allergens.py` | 10 | 7 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients` |
+| `tests/test_allergens.py` | 16 | 13 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients`, границы фильтра |
 | `tests/test_recommendation_model.py` | 9 | 8 | 1 | модель v1: веса IDF, артефакт, откат на заглушку, метрики ранжирования, CLI |
-| **Всего** | **85** | **36** | **49** | |
+| **Всего** | **93** | **43** | **50** | |
 
-Проверено 29.10.2026 на ветке `feat/openapi-sync`: без БД — `36 passed, 49 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `85 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 85 кейсов повторяет CI на PostgreSQL 15:
-там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
-одних пропусках.
+Проверено 29.10.2026 на ветке `feat/test-coverage-gost`: без БД — `43 passed, 50 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `93 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Покрытие того же прогона: **87,7 % строк**
+и **81,1 % ветвей** (порог 80 %, подробности — `docs/test-coverage.md`). Те же 93 кейса повторяет
+CI на PostgreSQL 15: там доступность базы контролируется отдельным шагом, поэтому набор не может
+«позеленеть» на одних пропусках.
 
 ## Покрытие эндпоинтов: 22 адреса, 1–3 кейса на адрес
 
@@ -80,7 +86,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 
 ## Что проверяет каждый файл
 
-### `tests/test_system.py` — 6 кейсов (5 без БД)
+### `tests/test_system.py` — 7 кейсов (6 без БД)
 
 - [x] `test_index_returns_the_greeting` — `GET /` → 200, `text/plain`, точный текст приветствия.
 - [x] `test_health_is_ok_without_a_database` — liveness-проба работает без базы (200).
@@ -90,6 +96,10 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   и их HTTP-методы из `openapi.yaml` (плюс `/health` и `/ready`); лишних и забытых маршрутов нет.
 - [x] `test_unknown_address_and_method_return_an_error_object` — 404 и 405 отдают единый
   формат ошибки `{"error": "..."}`.
+- [x] `test_rate_limit_blocks_the_third_registration` (БД) — с `RATE_LIMIT_ENABLED=true` и
+  `RATE_LIMIT_MAX_REQUESTS=2` третий `POST /register` с того же IP получает 429 и обычный
+  объект ошибки, а запрос с другим `X-Forwarded-For` (прокси) проходит: лимит считается по
+  клиенту, а не по процессу.
 
 ### `tests/test_auth.py` — 6 кейсов (4 без БД)
 
@@ -106,7 +116,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 - [x] `test_protected_rejects_bad_tokens` — 401 в 6 вариантах: нет заголовка, не Bearer,
   пустой токен, не JWT, просроченный токен, токен без `sub`.
 
-### `tests/test_recipes.py` — 8 кейсов (все с БД)
+### `tests/test_recipes.py` — 9 кейсов (все с БД)
 
 - [x] `test_create_recipe_stores_it_under_the_database_column_names` — 201 и запись в колонки
   `recipe_name`, `ingredients`, `instruction`, `difficulty_level` (API-поля `name`/`instructions`
@@ -213,10 +223,11 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   без холодильника 200 и пустой `recipes` с сообщением; токен удалённого пользователя → 401
   `{"error": "User from the token does not exist"}`.
 
-### `tests/test_allergens.py` — 10 кейсов (7 без БД)
+### `tests/test_allergens.py` — 16 кейсов (13 без БД)
 
 Файл про задачу 6.1: словарь аллергенов `app/ml/allergens.py`, скрипт метрик
-`app/ml/allergen_eval.py` и фильтр `app/services/allergen_service.py`.
+`app/ml/allergen_eval.py` и фильтр `app/services/allergen_service.py`. Покрытие этих двух
+модулей фильтра — 100 % строк и 100 % ветвей (задача 7, `docs/test-coverage.md`).
 
 - [x] `test_every_group_and_alias_points_at_a_known_group` — 13 групп, у каждой есть термин,
   `slug` совпадает с ключом, каждая запись `ALLERGEN_ALIASES` ведёт в существующую группу.
@@ -232,6 +243,22 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   соевый и растительный белок, `coconut milk`, `buckwheat flour`, `eggplant`, `nutmeg`.
 - [x] `test_custom_allergy_term_is_matched_by_lemma` — аллергия, которой нет в словаре
   («киви»), всё равно фильтрует рецепты по лемме.
+- [x] `test_repeated_allergy_terms_resolve_once` — «молочные продукты» и «молоко» дают одну
+  группу, «КРЕВЕТКИ» и `seafood` — тоже; повтор одного и того же неизвестного термина не
+  дублирует его в запросе.
+- [x] `test_a_stop_word_allergy_stays_a_plain_term` — аллергия из стоп-слова («без») не имеет
+  леммы: она остаётся обычным термином и ничего не отбрасывает (защита от «тихой» потери
+  аллергии).
+- [x] `test_matching_ignores_an_empty_or_punctuation_only_ingredient` — пустой список, строки из
+  пробелов и «!!!» ничего не находят и не ломают фильтр; продукт рядом с ними по-прежнему
+  находится.
+- [x] `test_is_safe_answers_the_opposite_of_matched_allergens` — `is_safe` = «нет совпадений»:
+  «кокосовое молоко» безопасно для аллергии на молоко, «молоко» — нет, пустой запрос безопасен.
+- [x] `test_a_dictionary_term_without_lemmas_is_skipped` — защитная ветка словаря: термин из
+  стоп-слов не превращается в пустое правило, остальные термины группы продолжают совпадать
+  (используется синтетическая группа, у настоящих групп таких терминов нет).
+- [x] `test_ingredient_names_falls_back_to_the_text_when_a_row_has_no_id` — рецепт без `id`
+  (не из базы) и рецепт без строк `recipe_ingredients` проверяются по тексту `ingredients`.
 - [x] `test_labelled_sample_has_no_missed_allergens` — размеченная выборка из 211 рецептов:
   `violation_rate = 0`, `F1 >= 0.95`, каждая группа встречается хотя бы раз, расхождений нет.
 - [x] `test_metrics_count_a_missed_allergen` — на синтетическом примере видно, что пропущенный
@@ -339,7 +366,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   сохраняется целиком (колонка `text`), у импортированного рецепта `instruction`,
   `difficulty_level` и `source_url` равны `NULL`.
 
-### `tests/test_importer_povarenok.py` — 11 кейсов (8 без БД)
+### `tests/test_importer_povarenok.py` — 12 кейсов (9 без БД)
 
 Сырые данные датасета не коммитятся (лицензия не указана), поэтому кейсы используют синтетический
 сэмпл `tests/data/povarenok_sample.json` (12 рецептов, 60 строк ингредиентов) и маленькие файлы,
@@ -371,8 +398,11 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   в количестве, литерал и список разобраны.
 - [x] `test_repeated_import_is_idempotent_and_honours_the_limit` — импорт с `limit=3`, затем полный
   (9 новых + 3 дубля), затем повторный (0 вставок, 12 дублей); количество строк не меняется.
-- [x] `test_cli_imports_the_sample` — `python -m app.importer` с `DATABASE_URL` импортирует сэмпл,
-  повторный запуск ничего не добавляет.
+- [x] `test_cli_imports_the_sample` — CLI с `DATABASE_URL` импортирует сэмпл, повторный запуск
+  ничего не добавляет.
+- [x] `test_module_entry_point_runs_the_cli` — `python -m app.importer --help` печатает
+  использование и завершается с кодом 0: документированная точка входа работает, а не только
+  `app.importer.cli`.
 
 ## Примечания для отчётности
 
@@ -394,7 +424,8 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   подготовка данных через настоящие HTTP-запросы; `add_relative_fridge_items` — продукты с датами
   относительно часов базы (`CURRENT_DATE + смещение`), чтобы проверять границу по тому же правилу;
   `db_app_factory(**env)` собирает приложения с дополнительными переменными окружения — так
-  тестируется флаг `SMART_RECOMMENDATIONS_ENABLED` (второе приложение на той же базе).
+  тестируются флаг `SMART_RECOMMENDATIONS_ENABLED` (второе приложение на той же базе) и лимит
+  запросов (`RATE_LIMIT_ENABLED` и `RATE_LIMIT_MAX_REQUESTS`).
 - **Импорт датасета проверяется без сети и без сырых данных**: синтетический сэмпл
   `tests/data/povarenok_sample.json` (12 рецептов, 60 строк ингредиентов) повторяет структуру
   Kaggle-датасета, включая Python-литерал из CSV и `None` вместо количества; скачивание
@@ -403,7 +434,8 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (29.10.2026, ветка `feat/openapi-sync`): без БД —
-  `36 passed, 49 skipped` (exit 0), с PostgreSQL 15 в контейнере — `85 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 85 кейсов повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (29.10.2026, ветка `feat/test-coverage-gost`): без БД —
+  `43 passed, 50 skipped` (exit 0), с PostgreSQL 15 в контейнере — `93 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний; покрытие того же прогона — 87,7 % строк и 81,1 %
+  ветвей (`docs/test-coverage.md`). Те же 93 кейса повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
