@@ -3,9 +3,9 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **59 кейсов в 10 файлах**. 21 кейс работает без базы (проверка входных
+**Состав набора:** **61 кейс в 10 файлах**. 21 кейс работает без базы (проверка входных
 данных, работа с токеном, служебные адреса, компоненты ML-заглушки, разбор датасета и CLI
-импорта), 38 — против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
+импорта), 40 — против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
 `openapi.yaml` приходится 1–3 кейса; адресов по-прежнему 19: модуль рекомендаций включается
 флагом `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
 (`tests/test_smart_recommendations.py`), а импорт датасета — это CLI, а не новый маршрут.
@@ -14,9 +14,9 @@
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 21 passed, 38 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 21 passed, 40 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 59 passed
+                                 # с БД: 61 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -30,18 +30,18 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_system.py` | 6 | 5 | 1 | служебные адреса, список маршрутов, формат ошибок |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
 | `tests/test_recipes.py` | 8 | 0 | 8 | CRUD рецептов и пагинация списка |
-| `tests/test_fridge.py` | 4 | 0 | 4 | холодильник и удаление просроченного |
+| `tests/test_fridge.py` | 6 | 0 | 6 | холодильник, пагинация списка и удаление просроченного |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 6 | 1 | 5 | уведомления и рекомендации |
 | `tests/test_database.py` | 11 | 0 | 11 | схема БД, ограничения, триггеры, таблицы без адресов |
 | `tests/test_importer_povarenok.py` | 11 | 8 | 3 | импорт датасета: разбор, форматы, идемпотентность, CLI |
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
-| **Всего** | **59** | **21** | **38** | |
+| **Всего** | **61** | **21** | **40** | |
 
-Проверено 29.10.2026 на ветке `feat/povarenok-import`: без БД — `21 passed, 38 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `59 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 59 кейсов повторяет CI на PostgreSQL 15:
+Проверено 29.10.2026 на ветке `fix/tech-debt`: без БД — `21 passed, 40 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `61 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 61 кейс повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
@@ -61,7 +61,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `GET /recipes/{id}` | `test_get_recipe_by_id` | 200 с телом рецепта, 404 на неизвестный id |
 | `PUT /recipes/{id}` | `test_update_recipe` | 200, изменение сохранено; 400 на неполное тело, 404 на неизвестный id |
 | `DELETE /recipes/{id}` | `test_delete_recipe` | 200, рецепт исчез из списка; 404 на неизвестный id |
-| `GET /fridge_items` | `test_add_and_list_fridge_items` | 200, поля продукта, `id` = `fridge_items.item_id` |
+| `GET /fridge_items` | `test_add_and_list_fridge_items`, `test_list_fridge_items_returns_one_page`, `test_list_fridge_items_validates_the_pagination` | 200, поля продукта, `id` = `fridge_items.item_id`; страницы `limit`/`offset` с порядком по `expiration_date`/`item_id`; 400 на 7 некорректных значений |
 | `POST /fridge_items` | `test_add_and_list_fridge_items`, `test_add_fridge_items_validates_the_payload` | 201 + сохранение батча; 400 на 10 некорректных тел (включая `quantity = 0` и неизвестного пользователя) |
 | `DELETE /delete_expired_products` | `test_delete_expired_products_removes_only_expired_items`, `test_delete_expired_products_uses_the_database_date_as_the_boundary` | удаляются только просроченные; граница «вчера / сегодня / завтра» по дате БД; повторный вызов безопасен |
 | `GET /notify_expired` | `test_notify_expired_lists_only_expired_products`, `test_notify_expired_and_delete_expired_products_use_one_rule` | пустой холодильник и список просроченных продуктов; отчёт и удаление считают просроченным одно и то же |
@@ -103,7 +103,8 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   `recipe_name`, `ingredients`, `instruction`, `difficulty_level` (API-поля `name`/`instructions`
   переводятся сериализатором).
 - [x] `test_create_recipe_validates_the_payload` — 400 на 8 тел: нет одного из четырёх
-  обязательных полей, не строка, значения длиннее колонок (`200`/`100`/`50` символов).
+  обязательных полей, не строка, значения длиннее допустимого (`200`/`10000`/`50` символов);
+  инструкция в 5 000 символов, наоборот, принимается с 201 (`recipes.instruction` — `text`).
 - [x] `test_list_recipes_returns_every_recipe` — 200, оба созданных рецепта в списке,
   `id` — целое, `cuisine_type` больше не отдаётся.
 - [x] `test_list_recipes_returns_one_page` — 5 рецептов: без параметров приходят все (лимит по
@@ -116,10 +117,15 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   неполное тело → 400, неизвестный id → 404.
 - [x] `test_delete_recipe` — 200, рецепт исчез, список пуст; повторное удаление → 404.
 
-### `tests/test_fridge.py` — 4 кейса (все с БД)
+### `tests/test_fridge.py` — 6 кейсов (все с БД)
 
 - [x] `test_add_and_list_fridge_items` — 201 и сообщение `N fridge item(s) added`; в списке
   корректные поля, `id` ответа совпадает с `fridge_items.item_id`, `quantity` — целое.
+- [x] `test_list_fridge_items_returns_one_page` — три продукта: без параметров приходят все
+  (лимит по умолчанию 50), `?limit=1&offset=1` — второй по порядку, `?offset=2` — последний,
+  `?offset=3` — пустой массив.
+- [x] `test_list_fridge_items_validates_the_pagination` — 400 на 7 значений (`limit=0`, `-1`,
+  `abc`, `201`; `offset=-1`, `abc`, `1000001`) и 200 на граничном `limit=200&offset=0`.
 - [x] `test_add_fridge_items_validates_the_payload` — 400 в цикле на 10 тел: тело не массив,
   пустой массив, элемент не объект, пустой объект, нет `quantity`, `quantity = 0` (CHECK в схеме),
   дробное `quantity`, длинное имя продукта, дата не в ISO 8601, несуществующий `user_id`.
@@ -303,6 +309,6 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
 - **Результат последнего прогона** (29.10.2026, ветка `feat/povarenok-import`): без БД —
-  `21 passed, 38 skipped` (exit 0), с PostgreSQL 15 в контейнере — `59 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 59 кейсов повторяет CI-workflow `Backend CI`
+  `21 passed, 40 skipped` (exit 0), с PostgreSQL 15 в контейнере — `61 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 61 кейс повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
