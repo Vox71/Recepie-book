@@ -121,6 +121,16 @@ def test_suggest_recipes_uses_the_expired_products(db_client, register_user, add
     assert body["message"]
     # Only the recipe whose ingredients mention the expired product is offered.
     assert [recipe["name"] for recipe in body["recipes"]] == ["Milk soup"]
+    # Task 5: every recipe of an answer follows components.schemas.Recipe.
+    assert set(body["recipes"][0]) == {
+        "id",
+        "name",
+        "ingredients",
+        "ingredient_list",
+        "instructions",
+        "difficulty_level",
+        "source_url",
+    }
 
     # generated_recipes keeps what was offered (docs/db_scheme.png).
     rows = db.fetch_all(

@@ -60,7 +60,12 @@ def test_add_list_and_remove_favourites(db_client, register_user, db):
     listed = db_client.get("/favorite_recipes", headers=_auth(token))
     assert listed.status_code == 200
     assert [recipe["id"] for recipe in listed.get_json()] == [second, first]  # newest first
-    assert listed.get_json()[0] == {"id": second, **{**RECIPE, "name": "Spinach soup"}}
+    assert listed.get_json()[0] == {
+        "id": second,
+        **{**RECIPE, "name": "Spinach soup"},
+        "ingredient_list": [],
+        "source_url": None,
+    }
     assert db_client.get("/favorite_recipes", headers=_auth(other_token)).get_json() == []
 
     removed = db_client.delete(f"/favorite_recipes/{first}", headers=_auth(token))
