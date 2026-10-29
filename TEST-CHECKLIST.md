@@ -3,20 +3,21 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **61 кейс в 10 файлах**. 21 кейс работает без базы (проверка входных
+**Состав набора:** **65 кейсов в 11 файлах**. 21 кейс работает без базы (проверка входных
 данных, работа с токеном, служебные адреса, компоненты ML-заглушки, разбор датасета и CLI
-импорта), 40 — против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
-`openapi.yaml` приходится 1–3 кейса; адресов по-прежнему 19: модуль рекомендаций включается
-флагом `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
+импорта), 44 — против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
+`openapi.yaml` приходится 1–3 кейса; адресов теперь 22 — три из них про избранное
+(`/favorite_recipes`). Модуль рекомендаций по-прежнему включается флагом
+`SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
 (`tests/test_smart_recommendations.py`), а импорт датасета — это CLI, а не новый маршрут.
 
 ## Как запускать
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 21 passed, 40 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 21 passed, 44 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 61 passed
+                                 # с БД: 65 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -30,6 +31,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_system.py` | 6 | 5 | 1 | служебные адреса, список маршрутов, формат ошибок |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
 | `tests/test_recipes.py` | 8 | 0 | 8 | CRUD рецептов и пагинация списка |
+| `tests/test_favorites.py` | 4 | 0 | 4 | избранное: JWT, порядок, идемпотентность |
 | `tests/test_fridge.py` | 6 | 0 | 6 | холодильник, пагинация списка и удаление просроченного |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 6 | 1 | 5 | уведомления и рекомендации |
@@ -37,15 +39,15 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_importer_povarenok.py` | 11 | 8 | 3 | импорт датасета: разбор, форматы, идемпотентность, CLI |
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
-| **Всего** | **61** | **21** | **40** | |
+| **Всего** | **65** | **21** | **44** | |
 
-Проверено 29.10.2026 на ветке `fix/tech-debt`: без БД — `21 passed, 40 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `61 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 61 кейс повторяет CI на PostgreSQL 15:
+Проверено 29.10.2026 на ветке `feat/favorites-api`: без БД — `21 passed, 44 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `65 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 65 кейсов повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
-## Покрытие эндпоинтов: 19 адресов, 1–3 кейса на адрес
+## Покрытие эндпоинтов: 22 адреса, 1–3 кейса на адрес
 
 | Адрес | Кейсы | Что проверяется |
 |---|---|---|
@@ -61,6 +63,9 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `GET /recipes/{id}` | `test_get_recipe_by_id` | 200 с телом рецепта, 404 на неизвестный id |
 | `PUT /recipes/{id}` | `test_update_recipe` | 200, изменение сохранено; 400 на неполное тело, 404 на неизвестный id |
 | `DELETE /recipes/{id}` | `test_delete_recipe` | 200, рецепт исчез из списка; 404 на неизвестный id |
+| `GET /favorite_recipes` | `test_add_list_and_remove_favourites`, `test_favourites_validate_the_recipe_id_and_the_pagination` | 200, только избранное владельца токена, от новых к старым; 401 без токена; 400 на `limit`/`offset` |
+| `POST /favorite_recipes` | `test_add_list_and_remove_favourites`, `test_favourite_routes_require_a_token`, `test_favourites_validate_the_recipe_id_and_the_pagination` | 201 и сообщение, повтор идемпотентен (дубля нет), `user_id` из тела игнорируется; 400 на 7 некорректных тел, 404 на неизвестный рецепт, 401 без токена |
+| `DELETE /favorite_recipes/{id}` | `test_add_list_and_remove_favourites`, `test_favourites_of_another_user_are_invisible` | 200 и запись исчезла; чужая запись → 404, у владельца остаётся; 401 без токена |
 | `GET /fridge_items` | `test_add_and_list_fridge_items`, `test_list_fridge_items_returns_one_page`, `test_list_fridge_items_validates_the_pagination` | 200, поля продукта, `id` = `fridge_items.item_id`; страницы `limit`/`offset` с порядком по `expiration_date`/`item_id`; 400 на 7 некорректных значений |
 | `POST /fridge_items` | `test_add_and_list_fridge_items`, `test_add_fridge_items_validates_the_payload` | 201 + сохранение батча; 400 на 10 некорректных тел (включая `quantity = 0` и неизвестного пользователя) |
 | `DELETE /delete_expired_products` | `test_delete_expired_products_removes_only_expired_items`, `test_delete_expired_products_uses_the_database_date_as_the_boundary` | удаляются только просроченные; граница «вчера / сегодня / завтра» по дате БД; повторный вызов безопасен |
@@ -77,7 +82,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 - [x] `test_health_is_ok_without_a_database` — liveness-проба работает без базы (200).
 - [x] `test_ready_reports_a_missing_database` — readiness-проба без базы → 503 `{"database":"unavailable"}`.
 - [x] `test_ready_reports_a_healthy_database` — с базой → 200 `{"database":"ok"}`.
-- [x] `test_registered_routes_match_the_contract` — в приложении зарегистрированы ровно 19 адресов
+- [x] `test_registered_routes_match_the_contract` — в приложении зарегистрированы ровно 22 адреса
   и их HTTP-методы из `openapi.yaml` (плюс `/health` и `/ready`); лишних и забытых маршрутов нет.
 - [x] `test_unknown_address_and_method_return_an_error_object` — 404 и 405 отдают единый
   формат ошибки `{"error": "..."}`.
@@ -116,6 +121,19 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 - [x] `test_update_recipe` — 200, изменённые поля сохранены (остальные не потеряны);
   неполное тело → 400, неизвестный id → 404.
 - [x] `test_delete_recipe` — 200, рецепт исчез, список пуст; повторное удаление → 404.
+
+### `tests/test_favorites.py` — 4 кейса (все с БД)
+
+- [x] `test_add_list_and_remove_favourites` — 201 и сообщение при добавлении; повторное
+  добавление дубля не создаёт и отвечает 201 «уже в избранном»; `user_id` в теле игнорируется
+  (избранное принадлежит владельцу токена); список отдаёт рецепты от новых к старым; `DELETE`
+  убирает запись.
+- [x] `test_favourite_routes_require_a_token` — 401 на все три адреса без заголовка и на битый токен.
+- [x] `test_favourites_of_another_user_are_invisible` — второй пользователь видит пустой список,
+  чужая запись при `DELETE` → 404, строка владельца остаётся.
+- [x] `test_favourites_validate_the_recipe_id_and_the_pagination` — 400 на 7 тел (`recipe_id`
+  нет, `0`, `-1`, строка, дробное, `true`, тело-массив), 404 на неизвестный рецепт, 400 на
+  `limit=0` и `offset=abc`, 200 на `limit=200`.
 
 ### `tests/test_fridge.py` — 6 кейсов (все с БД)
 
@@ -225,8 +243,8 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   и сохраняет историю версий.
 - [x] `test_favorite_recipes_are_unique_and_cascade` — `favorite_recipes`: добавление, проверка,
   список, повторное добавление игнорируется, несуществующий рецепт отклоняется внешним ключом,
-  снятие, удаление рецепта убирает его из избранного (у эндпоинта пока нет адреса в контракте,
-  поэтому проверяется через `app.models`).
+  снятие, удаление рецепта убирает его из избранного (`app.models` напрямую: так проверяются
+  уникальность пары и каскад, на которые опираются маршруты `/favorite_recipes`).
 - [x] `test_generated_recipes_keep_what_was_offered` — `generated_recipes`: запись выдачи,
   пустая выдача ничего не пишет, несуществующий рецепт отклоняется, очистка истории,
   каскад при удалении рецепта.
@@ -308,7 +326,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (29.10.2026, ветка `feat/povarenok-import`): без БД —
-  `21 passed, 40 skipped` (exit 0), с PostgreSQL 15 в контейнере — `61 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 61 кейс повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (29.10.2026, ветка `feat/favorites-api`): без БД —
+  `21 passed, 44 skipped` (exit 0), с PostgreSQL 15 в контейнере — `65 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 65 кейсов повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.

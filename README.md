@@ -90,8 +90,8 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
 - `NOT NULL DEFAULT current_timestamp` у timestamp-колонок (`last_added`, `action_time`,
   `updated_at`, `generated_on`, `created_at`) и `NOT NULL` у `fridge_item_versions.version`;
 - `recipes.instruction` объявлена `text` и nullable: инструкция не помещается в 100 символов, а у
-  импортированных рецептов её нет вовсе (валидация API пока ограничивает 100 символами —
-  синхронизация контракта вынесена в отдельную задачу);
+  импортированных рецептов её нет вовсе; API принимает до 10 000 символов
+  (`MAX_INSTRUCTION_LENGTH`), как и объявлено в `openapi.yaml`;
 - `recipes.ingredients` названа правильно: в текстовом описании схемы (`docs/db_plan`) слово
   написано с опечаткой («igredients»), а `openapi.yaml` и SQL-запросы используют `ingredients`.
 
@@ -193,21 +193,21 @@ SMART_RECOMMENDATIONS_NEIGHBOURS=10  # сколько соседей рассм�
 действительное обучение SBERT на истории выдач, полноценная морфология, метрики качества.
 
 
-Набор — 61 кейс в 10 файлах: по 1–3 кейса на каждый из 19 адресов (успех + отказ), отдельный
-файл `tests/test_database.py` про саму схему БД, два файла про заглушку ML-модуля и
-`tests/test_importer_povarenok.py` про импорт датасета.
-21 кейс идёт без базы, 40 — против PostgreSQL.
+Набор — 65 кейсов в 11 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
+файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, два
+файла про заглушку ML-модуля и `tests/test_importer_povarenok.py` про импорт датасета.
+21 кейс идёт без базы, 44 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 21 passed, 40 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 21 passed, 44 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 61 passed
+                                # с БД: 65 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`61 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`65 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
@@ -216,7 +216,7 @@ black --check app main.py worker.py tests
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
   Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
-  и `python -m pytest` (61 кейс, DB-часть идёт против сервисной базы `recipes_test`;
+  и `python -m pytest` (65 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
   файл `tests/test_database.py` проверяет саму схему БД `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).
@@ -230,5 +230,5 @@ black --check app main.py worker.py tests
 - `POST /user_preferences` — без JWT, `user_id` берётся из тела запроса;
 - `POST /recipes` — без JWT;
 - `GET /fridge_items` и `DELETE /delete_expired_products` — работают со всеми пользователями;
-- формат ошибок — `{"error": "<строка>"}`; JWT живёт 12 часов; пагинация есть у `GET /recipes`
-  и `GET /fridge_items` (`limit`/`offset`), остальные списки отдаются целиком.
+- формат ошибок — `{"error": "<строка>"}`; JWT живёт 12 часов; пагинация есть у `GET /recipes`,
+  `GET /fridge_items` и `GET /favorite_recipes` (`limit`/`offset`), остальные списки отдаются целиком.
