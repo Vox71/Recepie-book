@@ -50,6 +50,9 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     # recipe_ingredients drives the allergen filter; the engine falls back to the
     # ingredients text for recipes created through POST /recipes.
     ingredient_names = recipes_model.list_ingredient_names(db, [int(row["id"]) for row in recipes])
+    # Trained artifact of the v1 model (task 6.0).  It is optional: without the file the
+    # pipeline keeps the bag-of-lemmas fallback, so a fresh installation works as before.
+    tfidf_model = engine.artifact_for_settings(settings)
     outcome = engine.recommend_safe_recipes(
         favourites=favourites,
         fridge_products=[row["product_name"] for row in items],
@@ -59,6 +62,7 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
         limit=settings.smart_recommendations_limit,
         neighbours=settings.smart_recommendations_neighbours,
         settings=settings,
+        model=tfidf_model,
     )
     stats = outcome["stats"]
     if not outcome["recipes"]:
@@ -70,11 +74,12 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     generated_model.record_generated(db, user_id, [int(row["id"]) for row in selected])
     logger.info(
         "Smart recommendations for user %s: %s candidate(s), %s rejected by allergy, "
-        "vectorizer=%s, cold_start=%s",
+        "vectorizer=%s, model_documents=%s, cold_start=%s",
         user_id,
         stats["candidates"],
         stats["rejected_by_allergy"],
         stats["vectorizer"],
+        stats["model_documents"],
         stats["cold_start"],
     )
     context = (

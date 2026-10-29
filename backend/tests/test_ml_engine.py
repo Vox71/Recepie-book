@@ -87,6 +87,7 @@ def test_knn_and_the_engine_rank_by_similarity_and_fridge_products():
         "neighbours": 3,
         "selected": 3,
         "vectorizer": vectorizer.SPARSE_BACKEND,
+        "model_documents": None,
         "cold_start": False,
     }
     best = outcome["recipes"][0]

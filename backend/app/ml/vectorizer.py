@@ -6,21 +6,34 @@ when the optional ML stack is installed and switched on (``EMBEDDINGS_ENABLED``,
 a sparse bag-of-lemmas vector.  The fallback keeps the endpoint runnable - and the test
 suite deterministic - without ``torch``.  Only ``similarity`` and ``centroid`` know both
 backends; the rest of the pipeline is backend agnostic.
+
+Sprint 2, task 6.0 adds a third backend on the same sparse vectors: the trained TF-IDF
+model of ``app.ml.model``.  When its artifact is loaded, every lemma weighs its IDF
+instead of 1.0, so common ingredients stop dominating the answer.  The order of the
+choice is explicit and logged in the statistics of a request:
+
+1. SBERT, when it is switched on and available (the target of ``ml_plan``);
+2. the trained model v1, when the artifact exists;
+3. the bag-of-lemmas fallback, which needs nothing at all.
 """
 
 from __future__ import annotations
 
 import logging
 import math
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 from .. import embeddings
 from ..config import Settings
 from .preprocessing import lemmatize_terms
 
+if TYPE_CHECKING:  # pragma: no cover - import for typing only, no runtime dependency
+    from .model import TfidfModel
+
 logger = logging.getLogger(__name__)
 
 SPARSE_BACKEND = "sparse-bow"
+TFIDF_BACKEND = "tf-idf-v1"
 SBERT_BACKEND = "sbert"
 EMBEDDING_ERRORS = (ImportError, OSError, RuntimeError, ValueError)
 
@@ -34,11 +47,14 @@ def sparse_vector(text: str) -> SparseVector:
     return dict.fromkeys(lemmatize_terms([text]), 1.0)
 
 
-def encode_texts(texts: Sequence[str], settings: Settings) -> tuple[list[Vector], str]:
+def encode_texts(
+    texts: Sequence[str], settings: Settings, model: "TfidfModel | None" = None
+) -> tuple[list[Vector], str]:
     """Vectorize ``texts`` and report the backend that was used.
 
     Returns ``(vectors, backend)`` where ``backend`` is ``SBERT_BACKEND`` for sentence
-    embeddings and ``SPARSE_BACKEND`` for the fallback.
+    embeddings, ``TFIDF_BACKEND`` for the trained model and ``SPARSE_BACKEND`` for the
+    fallback without a model.
     """
     if settings.embeddings_enabled and embeddings.is_available():
         try:
@@ -50,6 +66,8 @@ def encode_texts(texts: Sequence[str], settings: Settings) -> tuple[list[Vector]
             )
         else:
             return [list(vector) for vector in dense], SBERT_BACKEND
+    if model is not None:
+        return [model.vector(text) for text in texts], TFIDF_BACKEND
     return [sparse_vector(text) for text in texts], SPARSE_BACKEND
 
 
