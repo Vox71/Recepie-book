@@ -84,6 +84,9 @@ class Settings:
         self.smart_recommendations_neighbours = _as_int(
             env.get("SMART_RECOMMENDATIONS_NEIGHBOURS"), DEFAULT_SMART_RECOMMENDATIONS_NEIGHBOURS
         )
+        # Trained artifact of the v1 model (task 6.0). Empty means "the default path
+        # app/ml/artifacts/v1.json"; a missing file keeps the bag-of-lemmas fallback.
+        self.smart_recommendations_artifact = env.get("SMART_RECOMMENDATIONS_ARTIFACT", "")
         self.rate_limit_enabled = _as_bool(env.get("RATE_LIMIT_ENABLED"), False)
         self.rate_limit_max_requests = _as_int(
             env.get("RATE_LIMIT_MAX_REQUESTS"), DEFAULT_RATE_LIMIT_MAX_REQUESTS

@@ -19,7 +19,7 @@ backend/
 │   ├── validation.py  # валидация входных данных (лимиты совпадают с типами колонок)
 │   ├── serializers.py # date/datetime/строки -> JSON (имена колонок -> имена полей API)
 │   ├── embeddings.py  # эмбеддинги (ленивая загрузка, включаются EMBEDDINGS_ENABLED)
-│   ├── ml/            # заглушка ML-модуля: предобработка, векторизация, KNN, фильтрация
+│   ├── ml/            # ML-модуль: предобработка, векторизация, TF-IDF модель v1, KNN, аллергены, метрики
 │   ├── importer/      # импорт датасета povarenok: чтение, нормализация, CLI, скачивание
 │   ├── schema.sql     # DDL: 9 таблиц, индексы, 3 триггера (идемпотентный)
 │   ├── migrate.py     # миграции: python -m app.migrate + журнал schema_migrations
@@ -29,7 +29,7 @@ backend/
 ├── migrations/        # версионные SQL-миграции для существующих баз (0001_...sql, ...)
 ├── requirements-ml.txt# необязательные зависимости импорта (pyarrow для parquet)
 └── tests/             # pytest: контрактные тесты + тесты с реальной БД
-    └── data/          # синтетический сэмпл датасета вместо сырых данных
+    └── data/          # сэмпл датасета, размеченная выборка аллергенов, корпус для метрик
 ```
 
 ### Запуск
@@ -171,11 +171,13 @@ python -m app.importer --dataset data/povarenok --limit 1000 --batch-size 1000
 | Компонент (`ml_plan`) | Где реализован | Чем заглушка отличается от целевого решения |
 |---|---|---|
 | предобработка данных | `app/ml/preprocessing.py` | нормализация и стоп-слова точные, лемматизация — таблица окончаний вместо `pymorphy2` |
-| векторизация | `app/ml/vectorizer.py` | SBERT при `EMBEDDINGS_ENABLED`, иначе разреженный bag-of-lemmas (без `torch` в старте) |
-| обучающая выборка | `app/ml/engine.py` | избранное пользователя (`favorite_recipes`); без него — «холодный старт» по холодильнику |
+| векторизация | `app/ml/vectorizer.py`, `app/ml/model.py` | TF-IDF v1 из артефакта (`SMART_RECOMMENDATIONS_ARTIFACT`), иначе bag-of-lemmas; SBERT — только при `EMBEDDINGS_ENABLED` |
+| обучающая выборка | `app/ml/engine.py`, `app/ml/corpus.py` | каталог рецептов из БД (`recipe_ingredients`, текст — запасной вариант) либо файл датасета |
+| избранное и «холодный старт» | `app/ml/engine.py` | профиль — центроид избранного; без него — продукты холодильника |
 | KNN | `app/ml/knn.py` | чистый Python вместо `sklearn.neighbors` (данных на один запрос мало) |
 | фильтрация | `app/ml/allergens.py`, `app/services/allergen_service.py` | словарь групп с синонимами и словоформами, фильтр по строкам `recipe_ingredients`; ложные срабатывания (кокос, гречка) исключены правилами |
 | контекстная адаптация | `app/ml/engine.py` | бонус за продукты из холодильника (`FRIDGE_BONUS = 0.2`) к косинусной близости |
+| оценка качества | `app/ml/allergen_eval.py`, `app/ml/evaluate.py` | precision/recall/F1 аллергенов и метрики ранжирования рекомендаций |
 
 Модуль включается флагом, адрес при этом не меняется: `GET /recommend_recipes` отвечает в том
 же формате `message` + `recipes`, что и раньше, — переключается только внутренняя логика
@@ -183,14 +185,41 @@ python -m app.importer --dataset data/povarenok --limit 1000 --batch-size 1000
 
 ```bash
 SMART_RECOMMENDATIONS_ENABLED=false  # базовая логика (как до модуля) — значение по умолчанию
-SMART_RECOMMENDATIONS_ENABLED=true   # заглушка ML-модуля
+SMART_RECOMMENDATIONS_ENABLED=true   # ML-модуль
 SMART_RECOMMENDATIONS_LIMIT=5        # размер ответа (top-5 на диаграмме ml_plan)
 SMART_RECOMMENDATIONS_NEIGHBOURS=10  # сколько соседей рассматривает KNN
+SMART_RECOMMENDATIONS_ARTIFACT=      # путь к обученной модели (по умолчанию app/ml/artifacts/v1.json)
 ```
 
 Переключатель проверяется тестами: `tests/test_smart_recommendations.py` прогоняет один и тот же
-набор данных дважды — с флагом и без него. Чего в заглушке ещё нет (следующий шаг работы):
-действительное обучение SBERT на истории выдач, полноценная морфология, метрики ранжирования.
+набор данных дважды — с флагом и без него. Чего в заглушке ещё нет: действительное обучение SBERT
+на истории выдач и полноценная морфология.
+
+### Модель рекомендаций v1 (TF-IDF)
+
+Задача 6.0/6.2 научила модуль взвешивать ингредиенты: вместо bag-of-lemmas (каждое слово весит
+1.0, поэтому `соль` и `масло` тянут ответ так же сильно, как `шафран`) используется TF-IDF с
+IDF, обученными на каталоге рецептов. Модель — один JSON-артефакт; нет файла — работает прежняя
+заглушка, сервис не падает.
+
+```bash
+cd backend
+python -m app.ml.model                 # обучить на корпусе репозитория (120 рецептов)
+python -m app.ml.model --from-db       # обучить на импортированном каталоге (DATABASE_URL)
+python -m app.ml.evaluate              # метрики v1 против baseline, код возврата 1 при регрессе
+```
+
+Замер на корпусе `backend/tests/data/recommendation_sample.json` (120 рецептов, 813 запросов,
+leave-one-ingredient-out, `k = 5`):
+
+| Стратегия | P@1 | P@5 | R@5 | Hit@5 | MRR@5 |
+|---|---|---|---|---|---|
+| baseline (bag-of-lemmas) | 0.385 | 0.326 | 0.344 | 0.672 | 0.493 |
+| v1 (TF-IDF) | 0.395 | **0.360** | **0.380** | **0.711** | **0.513** |
+
+`P@5` выросла на 3,3 п.п. (+10 % относительно), `MRR@5` — на 0.020: критерий задачи (v1 выше
+baseline по `P@5` и `MRR`) выполнен. Протокол измерения, разбивка по частоте продуктов,
+ограничения и команды воспроизведения — в [docs/recommendation-model.md](docs/recommendation-model.md).
 
 ### Аллергии и непереносимости
 
@@ -224,22 +253,22 @@ python -m app.ml.allergen_eval --json   # то же машинно-читаем�
 команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
 
 
-Набор — 75 кейсов в 12 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
-файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, три
-файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`)
-и `tests/test_importer_povarenok.py` про импорт датасета.
-28 кейсов идут без базы, 47 — против PostgreSQL.
+Набор — 84 кейса в 13 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
+файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, четыре
+файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`,
+`test_recommendation_model.py`) и `tests/test_importer_povarenok.py` про импорт датасета.
+36 кейсов идут без базы, 48 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 28 passed, 47 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 36 passed, 48 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 75 passed
+                                # с БД: 84 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`75 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`84 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).

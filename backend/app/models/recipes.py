@@ -25,6 +25,22 @@ def list_all_recipes(db: Database) -> list[dict]:
     return db.fetch_all(f"SELECT {RECIPE_COLUMNS} FROM recipes ORDER BY id")
 
 
+def list_recipes_for_model(db: Database, *, limit: int | None = None) -> list[dict]:
+    """Return ``id``/``recipe_name``/``ingredients`` of recipes for the v1 model (task 6.0).
+
+    The trainer needs the id (to look up ``recipe_ingredients``), the ingredient text (the
+    fallback for recipes created through ``POST /recipes``) and the name (only for the
+    diagnostics of a run); the instruction is not read, so a 147 thousand row catalogue
+    fits into memory.
+    """
+    sql = "SELECT id, recipe_name, ingredients FROM recipes ORDER BY id"
+    params: tuple[int, ...] = ()
+    if limit is not None:
+        sql += " LIMIT %s"
+        params = (limit,)
+    return db.fetch_all(sql, params)
+
+
 def create_recipe(db: Database, data: dict) -> int:
     """Insert a recipe and return the generated id."""
     sql = """

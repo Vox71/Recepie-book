@@ -9,7 +9,8 @@ The steps follow the activity diagram of ``ml_planning/image.png``:
    (filtering, component 5: ``app.ml.allergens``, driven by the ingredient lists of
    ``recipe_ingredients`` when the caller has them);
 4. the training sample and the candidates are vectorized (``app.ml.vectorizer``,
-   component 2);
+   component 2): by the trained TF-IDF model of ``app.ml.model`` when its artifact is
+   loaded, otherwise by the bag-of-lemmas fallback;
 5. the profile vector is the centroid of the training sample; a user without
    favourites is served by the cold start profile built from the fridge;
 6. KNN picks the ``neighbours`` most similar recipes (``app.ml.knn``, component 4);
@@ -24,10 +25,13 @@ the log line, so the API contract stays exactly the one of ``openapi.yaml``.
 from __future__ import annotations
 
 import logging
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 from ..config import Settings
 from . import allergens, knn, preprocessing, vectorizer
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, the artifact is loaded by the service
+    from .model import TfidfModel
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,7 @@ def recommend_safe_recipes(
     neighbours: int,
     settings: Settings,
     ingredient_names: Mapping[int, Sequence[str]] | None = None,
+    model: "TfidfModel | None" = None,
 ) -> dict:
     """Run the pipeline and return ``{"recipes": [...], "stats": {...}}``.
 
@@ -52,6 +57,8 @@ def recommend_safe_recipes(
     "score": float, "matched_products": [str]}``.  ``ingredient_names`` maps a recipe id
     onto its rows of ``recipe_ingredients``; without it the filter falls back to the
     ``recipes.ingredients`` text (the engine itself never touches the database).
+    ``model`` is the trained TF-IDF artifact of task 6.0: when it is given, the vectors
+    weigh lemmas by IDF, otherwise the module keeps the bag-of-lemmas fallback.
     """
     sample_texts = _training_sample(favourites)
     cold_start = not sample_texts and bool(fridge_products)
@@ -61,7 +68,7 @@ def recommend_safe_recipes(
 
     safe, rejected = _reject_allergens(recipes, allergies, ingredient_names)
     texts = sample_texts + [_ingredients(row) for row in safe]
-    vectors, backend = vectorizer.encode_texts(texts, settings)
+    vectors, backend = vectorizer.encode_texts(texts, settings, model)
     profile = vectorizer.centroid(vectors[: len(sample_texts)])
     recipe_vectors = vectors[len(sample_texts) :]
 
@@ -94,19 +101,33 @@ def recommend_safe_recipes(
         "neighbours": len(nearest),
         "selected": len(selected),
         "vectorizer": backend,
+        "model_documents": model.documents if backend == vectorizer.TFIDF_BACKEND else None,
         "cold_start": cold_start,
     }
     logger.info(
         "Stub pipeline: %s candidate(s), %s rejected by allergy, %s neighbour(s), "
-        "%s selected, vectorizer=%s, cold_start=%s",
+        "%s selected, vectorizer=%s, model_documents=%s, cold_start=%s",
         stats["candidates"],
         stats["rejected_by_allergy"],
         stats["neighbours"],
         stats["selected"],
         stats["vectorizer"],
+        stats["model_documents"],
         stats["cold_start"],
     )
     return {"recipes": selected, "stats": stats}
+
+
+def artifact_for_settings(settings: Settings) -> "TfidfModel | None":
+    """Trained artifact of this installation, or ``None`` for the bag-of-lemmas fallback.
+
+    The import is lazy on purpose: ``app.ml.model`` is also a command line tool, and the
+    application package must not pull it in at start-up (``python -m app.ml.model`` would
+    otherwise warn that the module is already imported).
+    """
+    from . import model
+
+    return model.model_for_settings(settings)
 
 
 def _ingredients(row: dict) -> str:

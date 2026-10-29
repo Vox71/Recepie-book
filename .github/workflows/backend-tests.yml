@@ -75,5 +75,13 @@ jobs:
       - name: Format check (black)
         run: black --check .
 
+      # Задача 6.0/6.2: обучение модели на корпусе из репозитория и критерий приёмки —
+      # python -m app.ml.evaluate возвращает 1, если v1 не лучше baseline по P@5 и MRR.
+      # Ни сети, ни датасета не нужно: корпус и артефакт собираются локально.
+      - name: Train the recommendation model and check the ranking metrics
+        run: |
+          python -m app.ml.model --out /tmp/v1.json
+          python -m app.ml.evaluate --model /tmp/v1.json
+
       - name: Run the test suite
         run: python -m pytest
