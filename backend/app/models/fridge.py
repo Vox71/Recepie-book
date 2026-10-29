@@ -26,10 +26,19 @@ INSERT_SQL = """
 """
 
 
-def list_items(db: Database) -> list[dict]:
-    """Return fridge items of all users (openapi.yaml: no filtering by token)."""
-    sql = f"SELECT {FRIDGE_COLUMNS} FROM fridge_items ORDER BY expiration_date, item_id"
-    return db.fetch_all(sql)
+def list_items(db: Database, *, limit: int, offset: int) -> list[dict]:
+    """Return one page of fridge items of all users (openapi.yaml: no token filter).
+
+    The order is ``expiration_date, item_id``: it is stable, so ``LIMIT``/``OFFSET``
+    pages neither repeat nor skip rows (CONTRIBUTION.md §4).
+    """
+    sql = f"""
+        SELECT {FRIDGE_COLUMNS}
+        FROM fridge_items
+        ORDER BY expiration_date, item_id
+        LIMIT %s OFFSET %s
+    """
+    return db.fetch_all(sql, (limit, offset))
 
 
 def list_user_items(db: Database, user_id: int) -> list[dict]:

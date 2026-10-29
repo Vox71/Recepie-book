@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 MAX_BATCH_SIZE = 100
 
 
-def list_items(db: Database) -> list[dict]:
-    """Return fridge items of all users (openapi.yaml: no filtering by token)."""
-    return [serialize_fridge_item(row) for row in fridge_model.list_items(db)]
+def list_items(db: Database, *, limit: int, offset: int) -> list[dict]:
+    """Return one page of fridge items of all users (openapi.yaml: no token filter)."""
+    rows = fridge_model.list_items(db, limit=limit, offset=offset)
+    return [serialize_fridge_item(row) for row in rows]
 
 
 def add_items(db: Database, payload: list) -> dict:
