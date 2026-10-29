@@ -111,6 +111,26 @@ python worker.py --once                 # один проход
 python worker.py --interval-minutes 60  # цикл по расписанию
 ```
 
+### Поля карточки рецепта
+
+Ответ любого адреса, который возвращает рецепт (`GET /recipes`, `GET /recipes/{id}`,
+`GET /favorite_recipes`, `GET /suggest_recipes`, оба режима `GET /recommend_recipes`), — один
+и тот же объект `Recipe` из `openapi.yaml`:
+
+| Поле | Что это | Бывает `null` |
+|---|---|---|
+| `id`, `name` | идентификатор и название (`recipes.recipe_name`) | – |
+| `ingredients` | тот же состав текстом, «продукт — количество» через запятую (`recipes.ingredients`) | – |
+| `ingredient_list` | `[{"name", "quantity"}]` из `recipe_ingredients`, в порядке `sort_order` — ровно то, по чему работает фильтр аллергенов | `[]` у рецептов, созданных через `POST /recipes` (структурные строки пишет только импортёр) |
+| `instructions` | инструкция (`recipes.instruction`, `text`) | да, у импортированных рецептов |
+| `difficulty_level` | сложность (`varchar(50)`) | да, у импортированных рецептов |
+| `source_url` | ссылка на источник и естественный ключ импорта (`varchar(255)`) | да, у рецептов, созданных через API |
+
+Почему так: в датасете povarenok нет ни инструкций, ни сложности, поэтому `POST /recipes`
+требует эти поля (ручной рецепт полный), а импортированный отдаёт `null` — иначе пришлось бы
+выдумывать данные. Импортировать и создавать вручную можно в одной базе, поэтому клиент должен
+быть готов к обоим вариантам; схема это разрешает явно (`nullable: true`).
+
 ### Просроченные продукты
 
 «Просрочен» — значит срок истёк до сегодняшнего дня: продукт со сроком «сегодня» ещё
@@ -253,22 +273,22 @@ python -m app.ml.allergen_eval --json   # то же машинно-читаем�
 команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
 
 
-Набор — 84 кейса в 13 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
+Набор — 85 кейсов в 13 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
 файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, четыре
 файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`,
 `test_recommendation_model.py`) и `tests/test_importer_povarenok.py` про импорт датасета.
-36 кейсов идут без базы, 48 — против PostgreSQL.
+36 кейсов идут без базы, 49 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 36 passed, 48 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 36 passed, 49 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 84 passed
+                                # с БД: 85 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`84 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`85 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).

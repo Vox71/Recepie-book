@@ -37,7 +37,7 @@
 | 1 | Подключить базу данных | Данные хранятся в PostgreSQL и не теряются при перезапуске; есть понятная диагностика «база доступна / недоступна» | `app/db.py` (пул + транзакции), `app/schema.sql` (9 таблиц, индексы, триггеры), `app/migrate.py` + `migrations/` | ✅ Готово, проверено | _впишите имя_ |
 | 2 | Создать Flask-приложение | Работающий веб-сервис с 19 адресами из согласованного контракта, единым форматом ошибок и полной проверкой входных данных | `app/__init__.py` (фабрика), `app/api/*` (blueprint на область), `app/validation.py`, `app/errors.py`, `app/serializers.py`, `app/services/*` | ✅ Готово, проверено | _впишите имя_ |
 | 3 | Авторизация | Регистрация и вход, пароль хранится необратимым хэшем (scrypt), личные экраны закрыты токеном | `app/security.py` (`@token_required`, JWT), `app/services/auth_service.py`, `app/models/users.py` | ✅ Готово, проверено | _впишите имя_ |
-| 4 | Тесты API | 84 автопроверки: на каждый из 22 адресов 1–3 кейса (успех и ошибка), отдельные файлы про схему БД, избранное, аллергены, модель рекомендаций и импорт датасета | 13 файлов в `backend/tests/`, 36 кейсов без БД + 48 с БД; прогон зелёный: 84 из 84 (локально на PostgreSQL 15 и в CI) | ✅ Готово, проверено | _впишите имя_ |
+| 4 | Тесты API | 85 автопроверок: на каждый из 22 адресов 1–3 кейса (успех и ошибка), отдельные файлы про схему БД, избранное, аллергены, модель рекомендаций и импорт датасета | 13 файлов в `backend/tests/`, 36 кейсов без БД + 49 с БД; прогон зелёный: 85 из 85 (локально на PostgreSQL 15 и в CI) | ✅ Готово, проверено | _впишите имя_ |
 | 5 | MVP-модель генерации рецептов | Рекомендации подбираются «под пользователя»: похожие на его избранное, без аллергенов и с приоритетом для продуктов, которые уже лежат в холодильнике | `app/ml/*` (предобработка, TF-IDF модель v1, KNN, фильтр аллергенов, метрики), `app/services/smart_recommendation_service.py`, флаг `SMART_RECOMMENDATIONS_ENABLED`; контракт API не менялся | ✅ Работает: TF-IDF v1 обучена, `P@5` и `MRR` выше baseline (задача 6.0/6.2); SBERT — следующий шаг | _впишите имя_ |
 
 **Обозначения статуса:** ✅ — сделано и проверено прогоном; ⚠️ — сделано, но есть оговорка
@@ -807,7 +807,55 @@ python -m pytest tests/test_recommendation_model.py -q   # 9 кейсов
 `backend/tests/test_recommendation_model.py`, `docs/recommendation-model.md`.
 
 **Статус.** ✅ Готово: `P@5` и `MRR` выше baseline, отчёт воспроизводится одной командой,
-отсутствие артефакта не ломает сервис; набор 84 из 84 (36 без БД + 48 с БД), `ruff`/`black` чистые.
+отсутствие артефакта не ломает сервис; набор 85 из 85 (36 без БД + 49 с БД), `ruff`/`black` чистые.
+
+## Спринт 2, задача 5. Синхронизация контракта `openapi.yaml`
+
+**Что требовалось.** Привести контракт и реализацию к одному виду после импорта датасета:
+`instruction`/`difficulty_level` — nullable (у импортированных рецептов их нет), `source_url` и
+список ингредиентов в схеме рецепта (с решением по объёму ответа), `limit`/`offset` у
+`GET /recipes` и адресов избранного, лимит длины инструкции — как у колонки `text`.
+
+**Что уже было сделано раньше:** пагинация `GET /recipes`, `GET /favorite_recipes` и
+`GET /fridge_items` описана в контракте и совпадает с кодом (`1..200`, по умолчанию 50,
+`offset ≤ 1 000 000`); лимит инструкции — 10 000 символов, как `recipes.instruction` (техдолг).
+
+**Что исправлено сейчас.**
+
+- `openapi.yaml`: у `Recipe` появился `required` (все семь полей присутствуют всегда),
+  `instructions`, `difficulty_level` и новый `source_url` помечены `nullable: true` с пояснением
+  «null у импортированных рецептов»; добавлена схема `Ingredient` (`name`, `quantity`) и массив
+  `ingredient_list` с описанием, что он заполняется импортёром.
+- `backend/app/models/recipes.py`: `RECIPE_COLUMNS` включает `source_url` (сразу во всех адресах,
+  которые отдают рецепт); новая `list_ingredient_details` отдаёт строки `recipe_ingredients`
+  вместе с количеством, `list_ingredient_names` теперь строится поверх неё.
+- `backend/app/serializers.py`: `serialize_recipe` принимает `ingredient_list` и возвращает новый
+  объект `Recipe`.
+- Новый `backend/app/services/recipe_presenter.py`: одна точка, где страница/ответ получает
+  ингредиенты **одним** запросом на страницу (`present_recipes`), а не запросом на рецепт. Через
+  него теперь отвечают `GET /recipes`, `GET /recipes/{id}`, `GET /favorite_recipes`,
+  `GET /suggest_recipes` и оба режима `GET /recommend_recipes`.
+- Решение по объёму ответа: `ingredient_list` отдаётся **всегда** вместе с текстом `ingredients`
+  (замер: 8 ингредиентов ≈ 0,4 КБ на рецепт, страница из 50 ≈ +21 КБ) — клиент видит ровно те
+  строки, по которым работает фильтр аллергенов, и ему не нужен второй запрос на рецепт. У рецептов,
+  созданных через `POST /recipes`, массив пуст: структурные строки пишет только импортёр.
+
+**Как проверено.** Новый кейс `test_imported_recipe_exposes_the_source_and_the_ingredient_list`
+(импортированный рецепт: `null` в трёх полях, `source_url`, порядок по `sort_order`,
+`quantity = null` у продукта без количества, те же поля в странице) и уточнённые проверки набора
+полей в `test_get_recipe_by_id`, `test_add_list_and_remove_favourites`,
+`test_suggest_recipes_uses_the_expired_products`, `test_smart_recommendations_*`. Прогон: 85 из 85.
+
+**Ограничения.** `POST /recipes` по-прежнему не пишет `recipe_ingredients` — структуру ручного
+рецепта клиент получает пустой (текст `ingredients` остаётся). Научить создание писать строки —
+отдельная небольшая задача: это изменение поведения, а не контракта.
+
+**Для разработчиков.** `openapi.yaml` (схемы `Recipe`/`Ingredient`),
+`backend/app/services/recipe_presenter.py`, `backend/app/serializers.py`,
+`backend/app/models/recipes.py`, `backend/tests/test_recipes.py`.
+
+**Статус.** ✅ Готово: контракт и реализация совпадают, обратная совместимость сохранена (только
+новые поля и `nullable`), 85 из 85, `ruff`/`black` чистые.
 
 ## Что сделано сверх этих пяти задач
 
@@ -915,6 +963,7 @@ python -m pytest tests/test_recommendation_model.py -q   # 9 кейсов
 | Что проверяется в ML-модуле без базы | `backend/tests/test_ml_engine.py` |
 | Качество фильтра аллергенов (F1, violation_rate) | `docs/allergen-filter.md`, `python -m app.ml.allergen_eval`, `backend/tests/test_allergens.py` |
 | Качество ранжирования модели v1 (P@5, MRR против baseline) | `docs/recommendation-model.md`, `python -m app.ml.evaluate`, `backend/tests/test_recommendation_model.py` |
+| Совпадение контракта и реализации (поля карточки рецепта) | `openapi.yaml` (`Recipe`, `Ingredient`), README «Поля карточки рецепта», `backend/tests/test_recipes.py` |
 | Как включить персональные рекомендации | `backend/.env.example` (`SMART_RECOMMENDATIONS_ENABLED`, `..._LIMIT`, `..._NEIGHBOURS`) |
 | Что проверки ветки с ML-модулем запускаются автоматически | `.github/workflows/backend-smart-recommendations-ci.yml` (Actions → **Backend CI (smart recommendations)**) |
 | Проектирование рекомендательного модуля (цель, к которой идёт MVP) | `ml_planning/ml_plan`, диаграмма `ml_planning/image.png` |
@@ -931,4 +980,4 @@ python -m pytest tests/test_recommendation_model.py -q   # 9 кейсов
 `feat/smart-recommendations`, причём в нём пять кейсов ML-модуля вынесены отдельным шагом.
 Документ подготовлен 15.10.2026, дополнен задачей 5 — 16.10.2026, задачами 1 и 3 спринта 2 —
 27.10.2026, задачей 2 спринта 2 — 29.10.2026, техдолгом, задачей 4, задачей 6.1 и задачей
-6.0/6.2 спринта 2 — 29.10.2026.
+6.0/6.2 спринта 2 — 29.10.2026, синхронизацией контракта (задача 5 спринта 2) — 29.10.2026.

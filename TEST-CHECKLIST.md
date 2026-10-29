@@ -3,9 +3,9 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **84 кейса в 13 файлах**. 36 кейсов работают без базы (проверка входных
+**Состав набора:** **85 кейсов в 13 файлах**. 36 кейсов работают без базы (проверка входных
 данных, работа с токеном, служебные адреса, компоненты ML-модуля, словарь аллергенов и его
-метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета и CLI импорта), 48 —
+метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета и CLI импорта), 49 —
 против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
 `openapi.yaml` приходится 1–3 кейса; адресов теперь 22 — три из них про избранное
 (`/favorite_recipes`). Модуль рекомендаций по-прежнему включается флагом
@@ -17,9 +17,9 @@
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 36 passed, 48 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 36 passed, 49 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 84 passed
+                                 # с БД: 85 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -32,7 +32,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 |---|---|---|---|---|
 | `tests/test_system.py` | 6 | 5 | 1 | служебные адреса, список маршрутов, формат ошибок |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
-| `tests/test_recipes.py` | 8 | 0 | 8 | CRUD рецептов и пагинация списка |
+| `tests/test_recipes.py` | 9 | 0 | 9 | CRUD рецептов, пагинация списка, поля карточки рецепта |
 | `tests/test_favorites.py` | 4 | 0 | 4 | избранное: JWT, порядок, идемпотентность |
 | `tests/test_fridge.py` | 6 | 0 | 6 | холодильник, пагинация списка и удаление просроченного |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
@@ -43,11 +43,11 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
 | `tests/test_allergens.py` | 10 | 7 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients` |
 | `tests/test_recommendation_model.py` | 9 | 8 | 1 | модель v1: веса IDF, артефакт, откат на заглушку, метрики ранжирования, CLI |
-| **Всего** | **84** | **36** | **48** | |
+| **Всего** | **85** | **36** | **49** | |
 
-Проверено 29.10.2026 на ветке `feat/recommendation-model-v1`: без БД — `36 passed, 48 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `84 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 84 кейса повторяет CI на PostgreSQL 15:
+Проверено 29.10.2026 на ветке `feat/openapi-sync`: без БД — `36 passed, 49 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `85 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 85 кейсов повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
@@ -121,7 +121,13 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   последний, `?offset=10` — пустой массив.
 - [x] `test_list_recipes_validates_the_pagination` — 400 на 7 значений (`limit=0`, `-1`, `abc`,
   `201`; `offset=-1`, `abc`, `1000001`) и 200 на граничном `limit=200&offset=0`.
-- [x] `test_get_recipe_by_id` — 200 с полным телом рецепта; неизвестный id → 404.
+- [x] `test_get_recipe_by_id` — 200 с полным телом рецепта (все семь полей `Recipe`, у ручного
+  рецепта `ingredient_list` пуст и `source_url = null`); неизвестный id → 404.
+- [x] `test_imported_recipe_exposes_the_source_and_the_ingredient_list` — рецепт «как из импортёра»
+  (заполнен `source_url`, нет инструкции и сложности, строки `recipe_ingredients` вставлены не по
+  порядку): ответ содержит ровно поля `Recipe`, `instructions`/`difficulty_level` = `null`,
+  `source_url` = ссылка на источник, `ingredient_list` отсортирован по `sort_order` и сохраняет
+  `quantity = null` у продукта без количества; та же структура приходит и в странице `GET /recipes`.
 - [x] `test_update_recipe` — 200, изменённые поля сохранены (остальные не потеряны);
   неполное тело → 400, неизвестный id → 404.
 - [x] `test_delete_recipe` — 200, рецепт исчез, список пуст; повторное удаление → 404.
@@ -397,7 +403,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (29.10.2026, ветка `feat/recommendation-model-v1`): без БД —
-  `36 passed, 48 skipped` (exit 0), с PostgreSQL 15 в контейнере — `84 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 84 кейса повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (29.10.2026, ветка `feat/openapi-sync`): без БД —
+  `36 passed, 49 skipped` (exit 0), с PostgreSQL 15 в контейнере — `85 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 85 кейсов повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
