@@ -3,9 +3,10 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **65 кейсов в 11 файлах**. 21 кейс работает без базы (проверка входных
-данных, работа с токеном, служебные адреса, компоненты ML-заглушки, разбор датасета и CLI
-импорта), 44 — против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
+**Состав набора:** **75 кейсов в 12 файлах**. 28 кейсов работают без базы (проверка входных
+данных, работа с токеном, служебные адреса, компоненты ML-заглушки, словарь аллергенов и его
+метрики, разбор датасета и CLI импорта), 47 — против реальной PostgreSQL (включая саму схему
+БД). На каждый адрес из
 `openapi.yaml` приходится 1–3 кейса; адресов теперь 22 — три из них про избранное
 (`/favorite_recipes`). Модуль рекомендаций по-прежнему включается флагом
 `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
@@ -15,9 +16,9 @@
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 21 passed, 44 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 28 passed, 47 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 65 passed
+                                 # с БД: 75 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -39,11 +40,12 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `tests/test_importer_povarenok.py` | 11 | 8 | 3 | импорт датасета: разбор, форматы, идемпотентность, CLI |
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
-| **Всего** | **65** | **21** | **44** | |
+| `tests/test_allergens.py` | 10 | 7 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients` |
+| **Всего** | **75** | **28** | **47** | |
 
-Проверено 29.10.2026 на ветке `feat/favorites-api`: без БД — `21 passed, 44 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `65 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 65 кейсов повторяет CI на PostgreSQL 15:
+Проверено 29.10.2026 на ветке `feat/allergen-filter`: без БД — `28 passed, 47 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `75 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 75 кейсов повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
@@ -203,6 +205,42 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   без холодильника 200 и пустой `recipes` с сообщением; токен удалённого пользователя → 401
   `{"error": "User from the token does not exist"}`.
 
+### `tests/test_allergens.py` — 10 кейсов (7 без БД)
+
+Файл про задачу 6.1: словарь аллергенов `app/ml/allergens.py`, скрипт метрик
+`app/ml/allergen_eval.py` и фильтр `app/services/allergen_service.py`.
+
+- [x] `test_every_group_and_alias_points_at_a_known_group` — 13 групп, у каждой есть термин,
+  `slug` совпадает с ключом, каждая запись `ALLERGEN_ALIASES` ведёт в существующую группу.
+- [x] `test_allergy_terms_resolve_into_groups_or_stay_plain_terms` — «молочные продукты» → `milk`,
+  «КРЕВЕТКИ» → `seafood` (регистр не важен), «gluten» → `gluten`; «кокос» и «киви» остаются
+  обычными терминами, пустой профиль не отбрасывает ничего.
+- [x] `test_matching_finds_word_forms_synonyms_and_phrases` — 32 продукта в разных формах:
+  «Сливки 10%», «Яичный белок», «Масло сливочное» (в отличие от «Масло растительное»),
+  «Соевый соус» → `soy` + `gluten`, «Икра красная» → `fish`, английские `Butter`, `Soy sauce`.
+- [x] `test_lookalikes_do_not_trigger_unrelated_allergens` — 23 «похожих, но не аллергена»:
+  кокос (и кокосовое молоко), гречка и гречневая мука, рисовая и кукурузная мука, мускатный
+  орех, «картофель сырой», печень, икра кабачковая, томатная паста, безглютеновый хлеб,
+  соевый и растительный белок, `coconut milk`, `buckwheat flour`, `eggplant`, `nutmeg`.
+- [x] `test_custom_allergy_term_is_matched_by_lemma` — аллергия, которой нет в словаре
+  («киви»), всё равно фильтрует рецепты по лемме.
+- [x] `test_labelled_sample_has_no_missed_allergens` — размеченная выборка из 211 рецептов:
+  `violation_rate = 0`, `F1 >= 0.95`, каждая группа встречается хотя бы раз, расхождений нет.
+- [x] `test_metrics_count_a_missed_allergen` — на синтетическом примере видно, что пропущенный
+  аллерген даёт `false_negatives = 1`, `recall = 0.5`, `violation_rate = 0.5` и попадает в список
+  расхождений.
+- [x] `test_the_filter_reads_recipe_ingredients_instead_of_the_text` (БД) — рецепт с текстом
+  «рис, вода» и строкой `recipe_ingredients` «Молоко» отбрасывается, а рецепт с текстом
+  «молоко» и строкой «Кокосовое молоко» остаётся; рецепт без строк ингредиентов проверяется
+  по тексту, пустой профиль аллергий не отбрасывает ничего.
+- [x] `test_recommendations_exclude_a_recipe_hidden_by_its_normalized_ingredients` (БД) —
+  `GET /recommend_recipes` отдаёт только безопасный суп, хотя в тексте «молочного» супа тоже
+  есть продукт из холодильника.
+- [x] `test_smart_recommendations_filter_by_the_normalized_ingredients` (БД) — то же для
+  `SMART_RECOMMENDATIONS_ENABLED=true`: движок получает строки `recipe_ingredients`, в
+  сообщении остаётся «1 rejected by allergy».
+
+
 ### `tests/test_ml_engine.py` — 2 кейса (без БД)
 
 Юнит-тесты самого модуля (`app/ml`) — без Flask и без базы, поэтому идут в любом окружении.
@@ -327,6 +365,6 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
 - **Результат последнего прогона** (29.10.2026, ветка `feat/favorites-api`): без БД —
-  `21 passed, 44 skipped` (exit 0), с PostgreSQL 15 в контейнере — `65 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 65 кейсов повторяет CI-workflow `Backend CI`
+  `28 passed, 47 skipped` (exit 0), с PostgreSQL 15 в контейнере — `75 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 75 кейсов повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
