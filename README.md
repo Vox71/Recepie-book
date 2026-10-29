@@ -174,7 +174,7 @@ python -m app.importer --dataset data/povarenok --limit 1000 --batch-size 1000
 | векторизация | `app/ml/vectorizer.py` | SBERT при `EMBEDDINGS_ENABLED`, иначе разреженный bag-of-lemmas (без `torch` в старте) |
 | обучающая выборка | `app/ml/engine.py` | избранное пользователя (`favorite_recipes`); без него — «холодный старт» по холодильнику |
 | KNN | `app/ml/knn.py` | чистый Python вместо `sklearn.neighbors` (данных на один запрос мало) |
-| фильтрация | `app/ml/engine.py` | аллергены из `user_allergy_preferences` сравниваются по леммам |
+| фильтрация | `app/ml/allergens.py`, `app/services/allergen_service.py` | словарь групп с синонимами и словоформами, фильтр по строкам `recipe_ingredients`; ложные срабатывания (кокос, гречка) исключены правилами |
 | контекстная адаптация | `app/ml/engine.py` | бонус за продукты из холодильника (`FRIDGE_BONUS = 0.2`) к косинусной близости |
 
 Модуль включается флагом, адрес при этом не меняется: `GET /recommend_recipes` отвечает в том
@@ -190,24 +190,56 @@ SMART_RECOMMENDATIONS_NEIGHBOURS=10  # сколько соседей рассм�
 
 Переключатель проверяется тестами: `tests/test_smart_recommendations.py` прогоняет один и тот же
 набор данных дважды — с флагом и без него. Чего в заглушке ещё нет (следующий шаг работы):
-действительное обучение SBERT на истории выдач, полноценная морфология, метрики качества.
+действительное обучение SBERT на истории выдач, полноценная морфология, метрики ранжирования.
 
+### Аллергии и непереносимости
 
-Набор — 65 кейсов в 11 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
-файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, два
-файла про заглушку ML-модуля и `tests/test_importer_povarenok.py` про импорт датасета.
-21 кейс идёт без базы, 44 — против PostgreSQL.
+Фильтрация по аллергенам вынесена в `app/ml/allergens.py`: 13 групп (`milk`, `gluten`, `eggs`,
+`soy`, `peanut`, `nuts`, `fish`, `seafood`, `sesame`, `mustard`, `celery`, `sulphites`, `lupin`)
+с русскими и английскими синонимами и словоформами. Термин пользователя из
+`user_allergy_preferences` («молочные продукты», «глютен») раскрывается в группу, поэтому
+«сливки» и «творог» тоже отбрасываются. Сравнение идёт по леммам и по строкам
+`recipe_ingredients` (их заполняет импортёр); текст `recipes.ingredients` используется только как
+запасной вариант для рецептов, созданных через `POST /recipes`.
+
+Ложные срабатывания исключены правилами, а не списком исключений «на глаз»:
+
+- `blockers` — фраза, которая превращает продукт в безопасный заменитель: «кокосовое молоко» это
+  не молоко, «гречневая мука» и «соевая мука» — не глютен, «томатная паста» — не макароны;
+- `exceptions` — слова-двойники: «картофель сырой» — не «сыр», «печень» — не «печенье»,
+  `eggplant` — не яйцо;
+- аллергия, которой нет в словаре («киви»), остаётся обычным термином и всё равно фильтрует.
+
+Качество измеряется на вручную размеченной выборке (`backend/tests/data/allergen_labeled_sample.json`,
+211 рецептов, 259 меток) скриптом:
 
 ```bash
 cd backend
-python -m pytest                # без БД: 21 passed, 44 skipped (DB-кейсы пропускаются)
+python -m app.ml.allergen_eval          # precision / recall / F1 / violation_rate + таблица по группам
+python -m app.ml.allergen_eval --json   # то же машинно-читаемо
+```
+
+Последний прогон: precision = 1.000, recall = 1.000, F1 = 1.000, `violation_rate = 0.000`
+(пропущенных аллергенов нет — это обязательный критерий задачи). Подробности, ограничения и
+команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
+
+
+Набор — 75 кейсов в 12 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
+файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, три
+файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`)
+и `tests/test_importer_povarenok.py` про импорт датасета.
+28 кейсов идут без базы, 47 — против PostgreSQL.
+
+```bash
+cd backend
+python -m pytest                # без БД: 28 passed, 47 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 65 passed
+                                # с БД: 75 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`65 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`75 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
@@ -216,7 +248,7 @@ black --check app main.py worker.py tests
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
   Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
-  и `python -m pytest` (65 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
+  и `python -m pytest` (75 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
   файл `tests/test_database.py` проверяет саму схему БД `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).

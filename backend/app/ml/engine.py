@@ -6,7 +6,8 @@ The steps follow the activity diagram of ``ml_planning/image.png``:
 2. the recipes are preprocessed - normalization, stop words, lemmatization
    (``app.ml.preprocessing``, component 1);
 3. the allergens are marked in the recipes and the unsafe ones are rejected
-   (filtering, component 5);
+   (filtering, component 5: ``app.ml.allergens``, driven by the ingredient lists of
+   ``recipe_ingredients`` when the caller has them);
 4. the training sample and the candidates are vectorized (``app.ml.vectorizer``,
    component 2);
 5. the profile vector is the centroid of the training sample; a user without
@@ -23,10 +24,10 @@ the log line, so the API contract stays exactly the one of ``openapi.yaml``.
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from ..config import Settings
-from . import knn, preprocessing, vectorizer
+from . import allergens, knn, preprocessing, vectorizer
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +44,14 @@ def recommend_safe_recipes(
     limit: int,
     neighbours: int,
     settings: Settings,
+    ingredient_names: Mapping[int, Sequence[str]] | None = None,
 ) -> dict:
     """Run the pipeline and return ``{"recipes": [...], "stats": {...}}``.
 
     Every entry of ``recipes`` is ``{"recipe": <recipes row>, "similarity": float,
-    "score": float, "matched_products": [str]}``.
+    "score": float, "matched_products": [str]}``.  ``ingredient_names`` maps a recipe id
+    onto its rows of ``recipe_ingredients``; without it the filter falls back to the
+    ``recipes.ingredients`` text (the engine itself never touches the database).
     """
     sample_texts = _training_sample(favourites)
     cold_start = not sample_texts and bool(fridge_products)
@@ -55,7 +59,7 @@ def recommend_safe_recipes(
         # No favourite yet: the fridge is the only context the module has (component 3).
         sample_texts = [", ".join(fridge_products)]
 
-    safe, rejected = _reject_allergens(recipes, allergies)
+    safe, rejected = _reject_allergens(recipes, allergies, ingredient_names)
     texts = sample_texts + [_ingredients(row) for row in safe]
     vectors, backend = vectorizer.encode_texts(texts, settings)
     profile = vectorizer.centroid(vectors[: len(sample_texts)])
@@ -115,21 +119,41 @@ def _training_sample(favourites: Sequence[dict]) -> list[str]:
     return [_ingredients(row) for row in favourites if _ingredients(row)]
 
 
-def _reject_allergens(recipes: Sequence[dict], allergies: Sequence[str]) -> tuple[list[dict], int]:
+def _reject_allergens(
+    recipes: Sequence[dict],
+    allergies: Sequence[str],
+    ingredient_names: Mapping[int, Sequence[str]] | None = None,
+) -> tuple[list[dict], int]:
     """Drop the recipes that mention an allergy of the user (component 5).
 
-    Returns the safe recipes and the number of rejected ones.
+    Returns the safe recipes and the number of rejected ones.  The allergy terms are
+    resolved once (``app.ml.allergens``), so a group such as ``молочные продукты``
+    rejects ``сливки`` and ``творог`` as well.
     """
+    query = allergens.resolve_allergies(allergies)
+    if not query:
+        return list(recipes), 0
     safe: list[dict] = []
     rejected = 0
     for row in recipes:
-        matched = preprocessing.mark_allergens(_ingredients(row), allergies)
+        names = _ingredient_names(row, ingredient_names)
+        matched = allergens.matched_allergens(names, query)
         if matched:
             rejected += 1
             logger.info("Recipe %s rejected: allergen(s) %s", row.get("id"), ", ".join(matched))
             continue
         safe.append(row)
     return safe, rejected
+
+
+def _ingredient_names(row: dict, ingredient_names: Mapping[int, Sequence[str]] | None) -> list[str]:
+    """Ingredient names of a recipe: ``recipe_ingredients`` rows or the text fallback."""
+    row_id = row.get("id")
+    if row_id is not None and ingredient_names is not None:
+        names = ingredient_names.get(int(row_id))
+        if names:
+            return list(names)
+    return [_ingredients(row)]
 
 
 def _matching_products(row: dict, products: Sequence[str]) -> list[str]:

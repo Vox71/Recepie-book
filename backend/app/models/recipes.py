@@ -82,3 +82,25 @@ def find_recipes_with_ingredients(
         LIMIT %s
     """
     return db.fetch_all(sql, (list(patterns), limit))
+
+
+def list_ingredient_names(db: Database, recipe_ids: Sequence[int]) -> dict[int, list[str]]:
+    """Return the normalized ingredient names of ``recipe_ids``, keyed by recipe id.
+
+    ``recipe_ingredients`` (one row per ingredient, ordered by ``sort_order``) is written
+    by the povarenok importer and is the source of truth for the allergen filter
+    (sprint 2, task 6.1).  Recipes created through ``POST /recipes`` have no rows here,
+    so the caller falls back to the ``recipes.ingredients`` text.
+    """
+    if not recipe_ids:
+        return {}
+    sql = """
+        SELECT recipe_id, ingredient_name
+        FROM recipe_ingredients
+        WHERE recipe_id = ANY(%s)
+        ORDER BY recipe_id, sort_order, id
+    """
+    names: dict[int, list[str]] = {}
+    for row in db.fetch_all(sql, (list(recipe_ids),)):
+        names.setdefault(int(row["recipe_id"]), []).append(str(row["ingredient_name"]))
+    return names

@@ -46,11 +46,16 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     # The normalized table is the source of truth (docs/db_scheme.png); the text column
     # stays a fallback for rows written outside /user_preferences.
     allergies = users_model.list_user_allergies(db, user_id) or parse_terms(user["allergies"])
+    recipes = recipes_model.list_all_recipes(db)
+    # recipe_ingredients drives the allergen filter; the engine falls back to the
+    # ingredients text for recipes created through POST /recipes.
+    ingredient_names = recipes_model.list_ingredient_names(db, [int(row["id"]) for row in recipes])
     outcome = engine.recommend_safe_recipes(
         favourites=favourites,
         fridge_products=[row["product_name"] for row in items],
         allergies=allergies,
-        recipes=recipes_model.list_all_recipes(db),
+        recipes=recipes,
+        ingredient_names=ingredient_names,
         limit=settings.smart_recommendations_limit,
         neighbours=settings.smart_recommendations_neighbours,
         settings=settings,

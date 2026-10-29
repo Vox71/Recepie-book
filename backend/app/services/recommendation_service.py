@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from . import smart_recommendation_service
+from . import allergen_service, smart_recommendation_service
 from .. import embeddings
 from ..config import Settings
 from ..db import Database
@@ -66,11 +66,11 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     # column is kept as a fallback for rows written outside /user_preferences.
     allergies = users_model.list_user_allergies(db, user_id) or parse_terms(user["allergies"])
     preferences = parse_terms(user["preferences"])
-    candidates = [
-        row
-        for row in recipes_model.list_all_recipes(db)
-        if not has_any_term(row["ingredients"], allergies)
-    ]
+    # The allergen filter reads recipe_ingredients (app/services/allergen_service.py), so
+    # "кокосовое молоко" is not taken for milk and "гречневая мука" is not gluten.
+    candidates, _rejected_by_allergy = allergen_service.filter_safe_recipes(
+        db, recipes_model.list_all_recipes(db), allergies
+    )
     if not candidates:
         return {"message": "No recipes match your allergies", "recipes": []}
 
