@@ -5,7 +5,6 @@ from __future__ import annotations
 from ..db import Database
 from ..errors import NotFound
 from ..models import recipes as recipes_model
-from ..serializers import serialize_recipe
 from ..validation import (
     MAX_DIFFICULTY_LENGTH,
     MAX_INSTRUCTION_LENGTH,
@@ -13,6 +12,7 @@ from ..validation import (
     MAX_TEXT_FIELD_LENGTH,
     require_string,
 )
+from .recipe_presenter import present_recipe, present_recipes
 
 
 def _validated(payload: dict) -> dict:
@@ -30,7 +30,7 @@ def _validated(payload: dict) -> dict:
 def list_recipes(db: Database, *, limit: int, offset: int) -> list[dict]:
     """Return one page of recipes (openapi.yaml: ``?limit=&offset=``)."""
     rows = recipes_model.list_recipes(db, limit=limit, offset=offset)
-    return [serialize_recipe(row) for row in rows]
+    return present_recipes(db, rows)
 
 
 def get_recipe(db: Database, recipe_id: int) -> dict:
@@ -38,7 +38,7 @@ def get_recipe(db: Database, recipe_id: int) -> dict:
     row = recipes_model.get_recipe(db, recipe_id)
     if row is None:
         raise NotFound(f"Recipe {recipe_id} not found")
-    return serialize_recipe(row)
+    return present_recipe(db, row)
 
 
 def create_recipe(db: Database, payload: dict) -> dict:

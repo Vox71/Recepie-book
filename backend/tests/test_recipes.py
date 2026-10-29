@@ -123,11 +123,78 @@ def test_get_recipe_by_id(db_client):
 
     response = db_client.get(f"/recipes/{recipe['id']}")
     assert response.status_code == 200
-    assert response.get_json() == {"id": recipe["id"], **RECIPE}
+    assert response.get_json() == {
+        "id": recipe["id"],
+        **RECIPE,
+        # A recipe created through POST /recipes has no rows in recipe_ingredients and
+        # no source, so the structure is empty and source_url is null (task 5).
+        "ingredient_list": [],
+        "source_url": None,
+    }
 
     unknown = db_client.get("/recipes/424242")
     assert unknown.status_code == 404
     assert "424242" in unknown.get_json()["error"]
+
+
+def test_imported_recipe_exposes_the_source_and_the_ingredient_list(db_client, db):
+    """The response of an imported recipe validates against ``openapi.yaml`` (task 5).
+
+    The importer writes a recipe without instructions and without difficulty level, and
+    keeps the structured ingredients in ``recipe_ingredients``; the API must answer with
+    nulls in the three nullable fields and with the normalized list in ``sort_order``.
+    """
+    source = "https://www.povarenok.ru/recipes/show/777/"
+    db.execute(
+        "INSERT INTO recipes (source_url, recipe_name, ingredients) VALUES (%s, %s, %s)",
+        (source, "Fish soup", "Лосось — 400 г, Картофель — 3 шт., Соль"),
+    )
+    recipe_id = int(db.fetch_one("SELECT id FROM recipes WHERE source_url = %s", (source,))["id"])
+    # Inserted out of order on purpose: the answer follows sort_order, not the insert order.
+    db.execute(
+        """
+        INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity_text, sort_order)
+        VALUES (%s, %s, %s, %s), (%s, %s, %s, %s), (%s, %s, NULL, %s)
+        """,
+        (
+            recipe_id,
+            "Картофель",
+            "3 шт.",
+            1,
+            recipe_id,
+            "Лосось",
+            "400 г",
+            0,
+            recipe_id,
+            "Соль",
+            2,
+        ),
+    )
+
+    response = db_client.get(f"/recipes/{recipe_id}")
+    assert response.status_code == 200
+    recipe = response.get_json()
+    assert set(recipe) == {
+        "id",
+        "name",
+        "ingredients",
+        "ingredient_list",
+        "instructions",
+        "difficulty_level",
+        "source_url",
+    }
+    assert recipe["source_url"] == source
+    assert recipe["instructions"] is None
+    assert recipe["difficulty_level"] is None
+    assert recipe["ingredient_list"] == [
+        {"name": "Лосось", "quantity": "400 г"},
+        {"name": "Картофель", "quantity": "3 шт."},
+        {"name": "Соль", "quantity": None},
+    ]
+    # The same fields come with a page, so a client needs no second request per recipe.
+    assert [item["ingredient_list"] for item in db_client.get("/recipes").get_json()] == [
+        recipe["ingredient_list"]
+    ]
 
 
 def test_update_recipe(db_client):

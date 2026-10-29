@@ -23,8 +23,8 @@ from ..models import fridge as fridge_model
 from ..models import generated as generated_model
 from ..models import recipes as recipes_model
 from ..models import users as users_model
-from ..serializers import serialize_recipe
 from ..validation import parse_terms
+from .recipe_presenter import present_recipes
 
 logger = logging.getLogger(__name__)
 
@@ -92,5 +92,5 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
             f"Recommended {len(selected)} recipe(s) for {context}: {stats['candidates']} "
             f"candidate(s), {stats['rejected_by_allergy']} rejected by allergy"
         ),
-        "recipes": [serialize_recipe(row) for row in selected],
+        "recipes": present_recipes(db, selected),
     }

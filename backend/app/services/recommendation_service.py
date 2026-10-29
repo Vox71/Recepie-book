@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from . import allergen_service, smart_recommendation_service
 from .. import embeddings
 from ..config import Settings
 from ..db import Database
@@ -13,8 +12,9 @@ from ..models import fridge as fridge_model
 from ..models import generated as generated_model
 from ..models import recipes as recipes_model
 from ..models import users as users_model
-from ..serializers import serialize_recipe
 from ..validation import has_any_term, parse_terms
+from . import allergen_service, smart_recommendation_service
+from .recipe_presenter import present_recipes
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def suggest_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     generated_model.record_generated(db, user_id, [int(row["id"]) for row in found])
     return {
         "message": f"Found {len(found)} recipe(s) to use up your expired products",
-        "recipes": [serialize_recipe(row) for row in found],
+        "recipes": present_recipes(db, found),
     }
 
 
@@ -86,7 +86,7 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     return {
         "message": f"Recommended {len(selected)} recipe(s) based on your fridge, "
         "allergies and preferences",
-        "recipes": [serialize_recipe(row) for row, _ in selected],
+        "recipes": present_recipes(db, [row for row, _ in selected]),
     }
 
 

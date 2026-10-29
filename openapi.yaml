@@ -692,8 +692,33 @@ components:
           items:
             type: string
 
+    Ingredient:
+      type: object
+      description: >
+        Одна строка recipe_ingredients: нормализованное название продукта и количество
+        текстом, в порядке sort_order (его пишет импортёр датасета povarenok).
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Колонка recipe_ingredients.ingredient_name (varchar(200)).
+        quantity:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: >
+            Колонка recipe_ingredients.quantity_text (varchar(100)); null, если в
+            источнике количество не указано (например, «соль» без граммовки).
+
     Recipe:
       type: object
+      description: >
+        Рецепт в ответе. Все поля присутствуют всегда; null допустим только там, где это
+        указано в описании поля: импортированный рецепт не имеет инструкции, сложности и
+        источника, а ручной рецепт не имеет source_url и строк recipe_ingredients.
+      required:
+        [id, name, ingredients, ingredient_list, instructions, difficulty_level, source_url]
       properties:
         id:
           type: integer
@@ -703,13 +728,40 @@ components:
           description: Колонка recipes.recipe_name (varchar(200)).
         ingredients:
           type: string
+          maxLength: 10000
+          description: >
+            Колонка recipes.ingredients (text) — тот же список текстом, «продукт —
+            количество» через запятую. Импортированный рецепт получает текст, собранный
+            импортёром из recipe_ingredients, ручной — то, что передал клиент.
+        ingredient_list:
+          type: array
+          description: >
+            Нормализованные строки recipe_ingredients в порядке sort_order — по ним
+            работает фильтр аллергенов. Пустой массив у рецептов, созданных через
+            POST /recipes: структурные строки пишет только импортёр датасета.
+          items:
+            $ref: '#/components/schemas/Ingredient'
         instructions:
           type: string
           maxLength: 10000
-          description: Колонка recipes.instruction (text, не varchar(100) из диаграммы).
+          nullable: true
+          description: >
+            Колонка recipes.instruction (text, не varchar(100) из диаграммы).
+            null у рецептов, импортированных из povarenok: в датасете нет инструкций.
         difficulty_level:
           type: string
           maxLength: 50
+          nullable: true
+          description: >
+            Колонка recipes.difficulty_level (varchar(50)). null у импортированных
+            рецептов: в датасете нет сложности.
+        source_url:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: >
+            Колонка recipes.source_url (varchar(255)) — естественный ключ импорта и
+            ссылка на источник рецепта. null у рецептов, созданных через POST /recipes.
 
     RecipeInput:
       type: object

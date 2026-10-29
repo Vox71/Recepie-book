@@ -6,7 +6,7 @@ from typing import Sequence
 
 from ..db import Database
 
-RECIPE_COLUMNS = "id, recipe_name, ingredients, instruction, difficulty_level"
+RECIPE_COLUMNS = "id, recipe_name, ingredients, instruction, difficulty_level, source_url"
 
 
 def list_recipes(db: Database, *, limit: int, offset: int) -> list[dict]:
@@ -100,6 +100,31 @@ def find_recipes_with_ingredients(
     return db.fetch_all(sql, (list(patterns), limit))
 
 
+def list_ingredient_details(db: Database, recipe_ids: Sequence[int]) -> dict[int, list[dict]]:
+    """Return the normalized ingredients of ``recipe_ids``, keyed by recipe id.
+
+    One row per ingredient of ``recipe_ingredients`` ordered by ``sort_order`` - the same
+    order the importer wrote and the allergen filter reads (sprint 2, task 6.1).  The API
+    exposes this list as ``ingredient_list`` (task 5), so a client sees exactly the rows
+    the filtering was based on; a recipe created through ``POST /recipes`` has no rows
+    here and gets an empty list.
+    """
+    if not recipe_ids:
+        return {}
+    sql = """
+        SELECT recipe_id, ingredient_name, quantity_text
+        FROM recipe_ingredients
+        WHERE recipe_id = ANY(%s)
+        ORDER BY recipe_id, sort_order, id
+    """
+    details: dict[int, list[dict]] = {}
+    for row in db.fetch_all(sql, (list(recipe_ids),)):
+        details.setdefault(int(row["recipe_id"]), []).append(
+            {"name": str(row["ingredient_name"]), "quantity": row["quantity_text"]}
+        )
+    return details
+
+
 def list_ingredient_names(db: Database, recipe_ids: Sequence[int]) -> dict[int, list[str]]:
     """Return the normalized ingredient names of ``recipe_ids``, keyed by recipe id.
 
@@ -108,15 +133,7 @@ def list_ingredient_names(db: Database, recipe_ids: Sequence[int]) -> dict[int, 
     (sprint 2, task 6.1).  Recipes created through ``POST /recipes`` have no rows here,
     so the caller falls back to the ``recipes.ingredients`` text.
     """
-    if not recipe_ids:
-        return {}
-    sql = """
-        SELECT recipe_id, ingredient_name
-        FROM recipe_ingredients
-        WHERE recipe_id = ANY(%s)
-        ORDER BY recipe_id, sort_order, id
-    """
-    names: dict[int, list[str]] = {}
-    for row in db.fetch_all(sql, (list(recipe_ids),)):
-        names.setdefault(int(row["recipe_id"]), []).append(str(row["ingredient_name"]))
-    return names
+    return {
+        recipe_id: [str(item["name"]) for item in items]
+        for recipe_id, items in list_ingredient_details(db, recipe_ids).items()
+    }

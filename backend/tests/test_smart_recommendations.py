@@ -110,6 +110,17 @@ def test_the_flag_on_ranks_the_favourites_and_the_fridge(
     ]
     # Peanut cookies are filtered out by the allergy, which the message reports.
     assert "rejected by allergy" in body["message"]
+    # Task 5: the module answers with the same Recipe object as the baseline path.
+    for recipe in body["recipes"]:
+        assert set(recipe) == {
+            "id",
+            "name",
+            "ingredients",
+            "ingredient_list",
+            "instructions",
+            "difficulty_level",
+            "source_url",
+        }
     # Everything that was offered is audited in generated_recipes.
     assert len(generated_model.list_generated(db, user_id)) == 3
 

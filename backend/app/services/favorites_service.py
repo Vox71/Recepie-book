@@ -11,14 +11,14 @@ from ..db import Database
 from ..errors import NotFound
 from ..models import favorites as favorites_model
 from ..models import recipes as recipes_model
-from ..serializers import serialize_recipe
 from ..validation import require_positive_int
+from .recipe_presenter import present_recipes
 
 
 def list_favorites(db: Database, user_id: int, *, limit: int, offset: int) -> list[dict]:
     """Return one page of the favourites of the token owner, newest first."""
     rows = favorites_model.list_favorites_page(db, user_id, limit=limit, offset=offset)
-    return [serialize_recipe(row) for row in rows]
+    return present_recipes(db, rows)
 
 
 def add_favorite(db: Database, user_id: int, payload: dict) -> dict:
