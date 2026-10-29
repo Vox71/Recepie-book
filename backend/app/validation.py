@@ -29,6 +29,11 @@ MAX_INSTRUCTION_LENGTH = 100  # recipes.instruction
 MAX_DIFFICULTY_LENGTH = 50  # recipes.difficulty_level
 MAX_PRODUCT_NAME_LENGTH = 100  # fridge_items.product_name
 MAX_TERM_LENGTH = 100  # user_allergy_preferences.allergy_name
+# Pagination of list endpoints (CONTRIBUTION.md §4): a page is at most 200 rows, so a
+# client cannot ask for all 147 000 imported recipes by accident (openapi.yaml).
+DEFAULT_PAGE_LIMIT = 50
+MAX_PAGE_LIMIT = 200
+MAX_PAGE_OFFSET = 1_000_000
 
 
 def json_object_body() -> dict:
@@ -160,6 +165,26 @@ def has_any_term(haystack: str, terms: Sequence[str]) -> bool:
     """True when ``haystack`` contains at least one of ``terms`` (case-insensitive)."""
     lowered = haystack.lower()
     return any(term.lower() in lowered for term in terms if term)
+
+
+def query_int(name: str, *, default: int, minimum: int, maximum: int) -> int:
+    """Return an integer query-string parameter inside ``[minimum, maximum]``.
+
+    Used for pagination (``?limit=&offset=``): a missing parameter takes ``default``,
+    anything that is not an integer or is out of range is a 400, never a 500.
+    """
+    raw = request.args.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError as exc:
+        raise BadRequest(f"Query parameter '{name}' must be an integer") from exc
+    if value < minimum or value > maximum:
+        raise BadRequest(
+            f"Query parameter '{name}' must be between {minimum} and {maximum}, got {value}"
+        )
+    return value
 
 
 def require_date(data: dict, field: str) -> date:

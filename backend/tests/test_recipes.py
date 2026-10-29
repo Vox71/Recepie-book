@@ -78,6 +78,41 @@ def test_list_recipes_returns_every_recipe(db_client):
         assert "cuisine_type" not in recipe
 
 
+def test_list_recipes_returns_one_page(db_client):
+    """``GET /recipes?limit=&offset=``: without the parameters the defaults apply."""
+    payloads = [{**RECIPE, "name": f"Recipe {index}"} for index in range(5)]
+    for payload in payloads:
+        assert db_client.post("/recipes", json=payload).status_code == 201
+
+    everything = db_client.get("/recipes").get_json()
+    assert [recipe["name"] for recipe in everything] == [payload["name"] for payload in payloads]
+
+    page = db_client.get("/recipes?limit=2&offset=1").get_json()
+    assert [recipe["name"] for recipe in page] == ["Recipe 1", "Recipe 2"]
+
+    tail = db_client.get("/recipes?offset=4").get_json()
+    assert [recipe["name"] for recipe in tail] == ["Recipe 4"]
+    assert db_client.get("/recipes?offset=10").get_json() == []
+
+
+def test_list_recipes_validates_the_pagination(db_client):
+    """A wrong limit/offset is a 400 with the usual error object, never a database error."""
+    for query in (
+        "limit=0",
+        "limit=-1",
+        "limit=abc",
+        "limit=201",  # MAX_PAGE_LIMIT
+        "offset=-1",
+        "offset=abc",
+        "offset=1000001",  # MAX_PAGE_OFFSET
+    ):
+        response = db_client.get(f"/recipes?{query}")
+        assert response.status_code == 400, query
+        assert "error" in response.get_json(), query
+
+    assert db_client.get("/recipes?limit=200&offset=0").status_code == 200
+
+
 def test_get_recipe_by_id(db_client):
     recipe = _create(db_client)
 
