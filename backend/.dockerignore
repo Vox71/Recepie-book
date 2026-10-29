@@ -8,3 +8,6 @@ __pycache__/
 .mypy_cache/
 .env
 tests/
+# The raw povarenok dataset is downloaded at run time and never shipped (its licence is
+# not stated, see docs/sprint-2-plan.md).
+data/

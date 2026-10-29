@@ -3,19 +3,20 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **46 кейсов в 9 файлах**. 13 кейсов работают без базы (проверка входных
-данных, работа с токеном, служебные адреса, компоненты ML-заглушки), 33 — против реальной
-PostgreSQL (включая саму схему БД). На каждый адрес из `openapi.yaml` приходится 1–3 кейса;
-адресов по-прежнему 19: модуль рекомендаций включается флагом `SMART_RECOMMENDATIONS_ENABLED`
-внутри `GET /recommend_recipes` (`tests/test_smart_recommendations.py`), новых маршрутов нет.
+**Состав набора:** **59 кейсов в 10 файлах**. 21 кейс работает без базы (проверка входных
+данных, работа с токеном, служебные адреса, компоненты ML-заглушки, разбор датасета и CLI
+импорта), 38 — против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
+`openapi.yaml` приходится 1–3 кейса; адресов по-прежнему 19: модуль рекомендаций включается
+флагом `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
+(`tests/test_smart_recommendations.py`), а импорт датасета — это CLI, а не новый маршрут.
 
 ## Как запускать
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 13 passed, 33 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 21 passed, 38 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 46 passed
+                                 # с БД: 59 passed
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -28,22 +29,23 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 |---|---|---|---|---|
 | `tests/test_system.py` | 6 | 5 | 1 | служебные адреса, список маршрутов, формат ошибок |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
-| `tests/test_recipes.py` | 6 | 0 | 6 | CRUD рецептов |
+| `tests/test_recipes.py` | 8 | 0 | 8 | CRUD рецептов и пагинация списка |
 | `tests/test_fridge.py` | 4 | 0 | 4 | холодильник и удаление просроченного |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 6 | 1 | 5 | уведомления и рекомендации |
 | `tests/test_database.py` | 11 | 0 | 11 | схема БД, ограничения, триггеры, таблицы без адресов |
+| `tests/test_importer_povarenok.py` | 11 | 8 | 3 | импорт датасета: разбор, форматы, идемпотентность, CLI |
 | `tests/test_ml_engine.py` | 2 | 2 | 0 | компоненты ML-модуля: предобработка, KNN, бонус холодильника |
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
-| **Всего** | **46** | **13** | **33** | |
+| **Всего** | **59** | **21** | **38** | |
 
-Проверено 27.10.2026 на ветке `fix/expired-products`: без БД — `13 passed, 33 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `46 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Те же 46 кейсов повторяет CI на PostgreSQL 15:
+Проверено 29.10.2026 на ветке `feat/povarenok-import`: без БД — `21 passed, 38 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `59 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Те же 59 кейсов повторяет CI на PostgreSQL 15:
 там доступность базы контролируется отдельным шагом, поэтому набор не может «позеленеть» на
 одних пропусках.
 
-## Покрытие эндпоинтов: 19 адресов, 1–2 кейса на адрес
+## Покрытие эндпоинтов: 19 адресов, 1–3 кейса на адрес
 
 | Адрес | Кейсы | Что проверяется |
 |---|---|---|
@@ -54,7 +56,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 | `POST /login` | `test_login_returns_a_token`, `test_login_requires_email_and_password` | 401 на неверный пароль и неизвестный email, 200 + `token`; 400 без email/password |
 | `GET /protected` | `test_protected_accepts_a_valid_token`, `test_protected_rejects_bad_tokens` | 200 с `user_id` из токена; 401 в 6 вариантах (нет заголовка, чужая схема, пустой/битый/просроченный токен, без `sub`) |
 | `POST /user_preferences` | `test_preferences_are_stored_normalized_and_cleared`, `test_user_preferences_validation` | 200 + запись в `users` и `user_allergy_preferences` (замена без дублей, очистка), 400 на неизвестный `user_id`; 400 на 6 некорректных тел |
-| `GET /recipes` | `test_list_recipes_returns_every_recipe` | 200, список рецептов, отсутствие удалённого `cuisine_type` |
+| `GET /recipes` | `test_list_recipes_returns_every_recipe`, `test_list_recipes_returns_one_page`, `test_list_recipes_validates_the_pagination` | 200, список рецептов без удалённого `cuisine_type`; страницы `limit`/`offset`, сортировка по id; 400 на 7 некорректных `limit`/`offset` |
 | `POST /recipes` | `test_create_recipe_stores_it_under_the_database_column_names`, `test_create_recipe_validates_the_payload` | 201 + запись в колонки `recipe_name`/`instruction`; 400 на 8 некорректных тел |
 | `GET /recipes/{id}` | `test_get_recipe_by_id` | 200 с телом рецепта, 404 на неизвестный id |
 | `PUT /recipes/{id}` | `test_update_recipe` | 200, изменение сохранено; 400 на неполное тело, 404 на неизвестный id |
@@ -95,7 +97,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 - [x] `test_protected_rejects_bad_tokens` — 401 в 6 вариантах: нет заголовка, не Bearer,
   пустой токен, не JWT, просроченный токен, токен без `sub`.
 
-### `tests/test_recipes.py` — 6 кейсов (все с БД)
+### `tests/test_recipes.py` — 8 кейсов (все с БД)
 
 - [x] `test_create_recipe_stores_it_under_the_database_column_names` — 201 и запись в колонки
   `recipe_name`, `ingredients`, `instruction`, `difficulty_level` (API-поля `name`/`instructions`
@@ -104,6 +106,11 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   обязательных полей, не строка, значения длиннее колонок (`200`/`100`/`50` символов).
 - [x] `test_list_recipes_returns_every_recipe` — 200, оба созданных рецепта в списке,
   `id` — целое, `cuisine_type` больше не отдаётся.
+- [x] `test_list_recipes_returns_one_page` — 5 рецептов: без параметров приходят все (лимит по
+  умолчанию 50), `?limit=2&offset=1` — ровно второй и третий по порядку id, `?offset=4` —
+  последний, `?offset=10` — пустой массив.
+- [x] `test_list_recipes_validates_the_pagination` — 400 на 7 значений (`limit=0`, `-1`, `abc`,
+  `201`; `offset=-1`, `abc`, `1000001`) и 200 на граничном `limit=200&offset=0`.
 - [x] `test_get_recipe_by_id` — 200 с полным телом рецепта; неизвестный id → 404.
 - [x] `test_update_recipe` — 200, изменённые поля сохранены (остальные не потеряны);
   неполное тело → 400, неизвестный id → 404.
@@ -231,6 +238,41 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   сохраняется целиком (колонка `text`), у импортированного рецепта `instruction`,
   `difficulty_level` и `source_url` равны `NULL`.
 
+### `tests/test_importer_povarenok.py` — 11 кейсов (8 без БД)
+
+Сырые данные датасета не коммитятся (лицензия не указана), поэтому кейсы используют синтетический
+сэмпл `tests/data/povarenok_sample.json` (12 рецептов, 60 строк ингредиентов) и маленькие файлы,
+которые тест пишет во временную папку `tmp_path`. Сеть не используется: скачивание проверяется
+подставным `opener`.
+
+- [x] `test_record_from_row_normalizes_the_dataset_values` — пробелы и неразрывный пробел
+  схлопываются, `url`/`name` обрезаются; повтор ингредиента без учёта регистра, пустое имя и
+  пустое количество отбрасываются; текст `recipes.ingredients` собирается через « — ».
+- [x] `test_record_from_row_rejects_unusable_rows` — нет `url`/`name`, `url` не http(s), длина
+  url больше `varchar(255)` или названия больше `varchar(200)` → строка пропускается.
+- [x] `test_parse_ingredients_accepts_the_dataset_shapes` — словарь, JSON-строка, Python-литерал
+  из CSV (`{'Яйцо куриное': '5 шт', 'Соль': None}`), строки «имя: количество», список словарей и
+  строк; `""`/`nan`/`None` дают пустой список, пустой список рендерится как «ингредиенты не указаны».
+- [x] `test_iter_rows_reads_json_csv_and_jsonl` — три формата дают те же строки; CSV без колонок
+  датасета и неизвестное расширение — понятная ошибка `DatasetError`, а не пустой импорт; CSV в
+  формате pandas (литерал + пустая ячейка) разбирается в ингредиенты и в текст-заглушку.
+- [x] `test_import_dataset_dry_run_does_not_need_a_database` — `db=None` + `dry_run=True`: 12
+  рецептов и 60 ингредиентов разобраны, вставок 0; `--limit` ограничивает разбор; строка без url
+  считается пропущенной.
+- [x] `test_download_dataset_unpacks_the_archive_and_sends_the_credentials` — Basic-заголовок из
+  `KAGGLE_USERNAME`/`KAGGLE_KEY`, таймаут передаётся в `opener`, zip распакован, сам архив удалён.
+- [x] `test_download_dataset_requires_the_kaggle_credentials` — без переменных окружения —
+  `DatasetError` (доступ к Kaggle только через env).
+- [x] `test_cli_dry_run_and_error_codes` — нет файла → код 1; нет `DATABASE_URL` без `--dry-run` →
+  код 2; `--dry-run` без базы → 0; путь из `POVARENOK_DATASET` и `--limit`.
+- [x] `test_import_fills_recipes_and_recipe_ingredients` — 12 рецептов и 60 строк ингредиентов,
+  `instruction`/`difficulty_level` = `NULL`, `source_url` заполнен, порядок `sort_order`, `NULL`
+  в количестве, литерал и список разобраны.
+- [x] `test_repeated_import_is_idempotent_and_honours_the_limit` — импорт с `limit=3`, затем полный
+  (9 новых + 3 дубля), затем повторный (0 вставок, 12 дублей); количество строк не меняется.
+- [x] `test_cli_imports_the_sample` — `python -m app.importer` с `DATABASE_URL` импортирует сэмпл,
+  повторный запуск ничего не добавляет.
+
 ## Примечания для отчётности
 
 - **Осознанные отклонения от CONTRIBUTION.md, зафиксированные тестами** (поведение задано
@@ -252,11 +294,15 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
   относительно часов базы (`CURRENT_DATE + смещение`), чтобы проверять границу по тому же правилу;
   `db_app_factory(**env)` собирает приложения с дополнительными переменными окружения — так
   тестируется флаг `SMART_RECOMMENDATIONS_ENABLED` (второе приложение на той же базе).
+- **Импорт датасета проверяется без сети и без сырых данных**: синтетический сэмпл
+  `tests/data/povarenok_sample.json` (12 рецептов, 60 строк ингредиентов) повторяет структуру
+  Kaggle-датасета, включая Python-литерал из CSV и `None` вместо количества; скачивание
+  проверяется подставным `opener`, поэтому `pytest` не зависит от Kaggle и `KAGGLE_KEY`.
 - **Почему кейсов немного**: набор намеренно сделан обозримым для новичка — один успешный кейс
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (27.10.2026, ветка `fix/expired-products`): без БД —
-  `13 passed, 33 skipped` (exit 0), с PostgreSQL 15 в контейнере — `46 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний. Те же 46 кейсов повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (29.10.2026, ветка `feat/povarenok-import`): без БД —
+  `21 passed, 38 skipped` (exit 0), с PostgreSQL 15 в контейнере — `59 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний. Те же 59 кейсов повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.

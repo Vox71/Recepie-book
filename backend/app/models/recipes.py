@@ -9,8 +9,19 @@ from ..db import Database
 RECIPE_COLUMNS = "id, recipe_name, ingredients, instruction, difficulty_level"
 
 
-def list_recipes(db: Database) -> list[dict]:
-    """Return every recipe ordered by id."""
+def list_recipes(db: Database, *, limit: int, offset: int) -> list[dict]:
+    """Return one page of recipes ordered by id."""
+    sql = f"SELECT {RECIPE_COLUMNS} FROM recipes ORDER BY id LIMIT %s OFFSET %s"
+    return db.fetch_all(sql, (limit, offset))
+
+
+def list_all_recipes(db: Database) -> list[dict]:
+    """Return every recipe ordered by id.
+
+    The baseline scoring and the stub ML module compare the candidate with the whole
+    catalogue; a trained index replaces this full scan in sprint 2 (task 6). The HTTP
+    address is paginated and uses ``list_recipes`` instead.
+    """
     return db.fetch_all(f"SELECT {RECIPE_COLUMNS} FROM recipes ORDER BY id")
 
 

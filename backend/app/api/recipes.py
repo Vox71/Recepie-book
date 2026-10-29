@@ -6,15 +6,23 @@ from flask import Blueprint, jsonify
 
 from ..context import get_db
 from ..services import recipe_service
-from ..validation import json_object_body
+from ..validation import (
+    DEFAULT_PAGE_LIMIT,
+    MAX_PAGE_LIMIT,
+    MAX_PAGE_OFFSET,
+    json_object_body,
+    query_int,
+)
 
 bp = Blueprint("recipes", __name__)
 
 
 @bp.get("/recipes")
 def list_recipes() -> tuple:
-    """Return all recipes."""
-    return jsonify(recipe_service.list_recipes(get_db())), 200
+    """Return a page of recipes: ``?limit=&offset=`` (CONTRIBUTION.md §4)."""
+    limit = query_int("limit", default=DEFAULT_PAGE_LIMIT, minimum=1, maximum=MAX_PAGE_LIMIT)
+    offset = query_int("offset", default=0, minimum=0, maximum=MAX_PAGE_OFFSET)
+    return jsonify(recipe_service.list_recipes(get_db(), limit=limit, offset=offset)), 200
 
 
 @bp.post("/recipes")

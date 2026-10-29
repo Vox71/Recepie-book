@@ -50,7 +50,7 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
         favourites=favourites,
         fridge_products=[row["product_name"] for row in items],
         allergies=allergies,
-        recipes=recipes_model.list_recipes(db),
+        recipes=recipes_model.list_all_recipes(db),
         limit=settings.smart_recommendations_limit,
         neighbours=settings.smart_recommendations_neighbours,
         settings=settings,

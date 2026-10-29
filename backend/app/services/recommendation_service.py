@@ -68,7 +68,7 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     preferences = parse_terms(user["preferences"])
     candidates = [
         row
-        for row in recipes_model.list_recipes(db)
+        for row in recipes_model.list_all_recipes(db)
         if not has_any_term(row["ingredients"], allergies)
     ]
     if not candidates:

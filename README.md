@@ -20,13 +20,16 @@ backend/
 │   ├── serializers.py # date/datetime/строки -> JSON (имена колонок -> имена полей API)
 │   ├── embeddings.py  # эмбеддинги (ленивая загрузка, включаются EMBEDDINGS_ENABLED)
 │   ├── ml/            # заглушка ML-модуля: предобработка, векторизация, KNN, фильтрация
+│   ├── importer/      # импорт датасета povarenok: чтение, нормализация, CLI, скачивание
 │   ├── schema.sql     # DDL: 9 таблиц, индексы, 3 триггера (идемпотентный)
 │   ├── migrate.py     # миграции: python -m app.migrate + журнал schema_migrations
 │   ├── models/        # SQL-слой: по модулю на таблицу, только параметризованные запросы
 │   ├── services/      # бизнес-логика
 │   └── api/           # HTTP-слой (blueprint'ы по областям)
 ├── migrations/        # версионные SQL-миграции для существующих баз (0001_...sql, ...)
+├── requirements-ml.txt# необязательные зависимости импорта (pyarrow для parquet)
 └── tests/             # pytest: контрактные тесты + тесты с реальной БД
+    └── data/          # синтетический сэмпл датасета вместо сырых данных
 ```
 
 ### Запуск
@@ -121,6 +124,44 @@ python worker.py --interval-minutes 60  # цикл по расписанию
 (граница «вчера / сегодня / завтра» и повторное удаление) и
 `test_notify_expired_and_delete_expired_products_use_one_rule` (отчёт и удаление совпадают).
 
+### Импорт датасета povarenok
+
+Реальные рецепты приходят из открытого датасета Kaggle
+[`rogozinushka/povarenok-recipes`](https://www.kaggle.com/datasets/rogozinushka/povarenok-recipes):
+~147 тыс. строк, поля `url`, `name`, `ingredients`. Лицензия не указана, поэтому **сырые данные не
+коммитятся и не попадают в образ**: `.gitignore` и `backend/.dockerignore` исключают
+`backend/data/`, а в репозитории лежит только синтетический сэмпл
+`backend/tests/data/povarenok_sample.json` (12 рецептов, 60 строк ингредиентов).
+
+```bash
+cd backend
+pip install -r requirements-ml.txt        # pyarrow — только для чтения parquet
+export KAGGLE_USERNAME=... KAGGLE_KEY=... # доступ к Kaggle только через переменные окружения
+
+python -m app.importer --download --destination data/povarenok   # скачать и распаковать архив
+python -m app.importer --dataset tests/data/povarenok_sample.json --dry-run
+python -m app.importer --dataset data/povarenok --limit 1000 --batch-size 1000
+```
+
+| Что | Как устроено |
+|---|---|
+| форматы | CSV (родной формат датасета), JSON/JSONL и parquet; формат определяется по расширению |
+| `ingredients` | словарь в трёх видах: Python-литерал из CSV (`{'Соль': None}`), JSON-строка, список строк `"name: amount"`; `ast.literal_eval` не исполняет код из файла |
+| запись | `recipes` (`source_url`, `recipe_name`, `ingredients`, `instruction = NULL`, `difficulty_level = NULL`) + `recipe_ingredients` (`ingredient_name`, `quantity_text`, `sort_order`) |
+| идемпотентность | `source_url` — естественный ключ, `ON CONFLICT (source_url) DO NOTHING`: повторный импорт не создаёт дублей, а `--limit` позволяет продолжить с места остановки |
+| память | потоковое чтение и пачки по `--batch-size` (по умолчанию 1000), каждая пачка — одна транзакция |
+| прогресс | `logging` по каждой пачке и итоговые счётчики (`recipes_inserted`, `recipes_duplicated`, `ingredients_inserted`), без персональных данных |
+| сеть | скачивание — стандартный `urllib` с таймаутом (`--timeout`, по умолчанию 120 с) и Basic-авторизацией Kaggle; архив распаковывается с защитой от `../`-путей |
+
+Замеры на синтетическом CSV в формате датасета (50 тыс. строк, 12,5 МБ): `--dry-run` — 3,0 с и
+72 МиБ пиковой памяти; импорт 20 тыс. рецептов (100 тыс. строк ингредиентов) — 6,8 с и те же
+72 МиБ; повторный запуск — 2,0 с, вставлено 0 записей (20 тыс. дублей). Память не растёт вместе
+с файлом. `kagglehub` и `pandas` не понадобились: скачивание — стандартный `urllib`, CSV читает
+`csv` из стандартной библиотеки, parquet — `pyarrow` из `requirements-ml.txt`.
+
+`GET /recipes` отдаёт страницы (`?limit=&offset=`; по умолчанию 50, максимум 200) — без этого
+147 тыс. рецептов в одном ответе были бы неприемлемы.
+
 ### Модуль рекомендаций (заглушка ML)
 
 `app/ml` — минимальная рабочая версия рекомендательного модуля из `ml_planning/ml_plan`
@@ -152,21 +193,21 @@ SMART_RECOMMENDATIONS_NEIGHBOURS=10  # сколько соседей рассм�
 действительное обучение SBERT на истории выдач, полноценная морфология, метрики качества.
 
 
-Набор — 46 кейсов в 9 файлах: по 1–3 кейса на каждый из 19 адресов (успех + отказ), отдельный
-файл `tests/test_database.py` про саму схему БД и два файла про заглушку ML-модуля
-(`tests/test_ml_engine.py` без базы и `tests/test_smart_recommendations.py` против неё).
-13 кейсов идут без базы, 33 — против PostgreSQL.
+Набор — 59 кейсов в 10 файлах: по 1–3 кейса на каждый из 19 адресов (успех + отказ), отдельный
+файл `tests/test_database.py` про саму схему БД, два файла про заглушку ML-модуля и
+`tests/test_importer_povarenok.py` про импорт датасета.
+21 кейс идёт без базы, 38 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 13 passed, 33 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 21 passed, 38 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 46 passed
+                                # с БД: 59 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 ```
 
-Полный прогон против реальной базы (`46 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`59 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 Полный перечень кейсов (чек-лист для отчётности): [TEST-CHECKLIST.md](TEST-CHECKLIST.md).
@@ -175,7 +216,7 @@ black --check app main.py worker.py tests
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
   Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`
-  и `python -m pytest` (46 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
+  и `python -m pytest` (59 кейсов, DB-часть идёт против сервисной базы `recipes_test`;
   файл `tests/test_database.py` проверяет саму схему БД `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).
@@ -189,4 +230,5 @@ black --check app main.py worker.py tests
 - `POST /user_preferences` — без JWT, `user_id` берётся из тела запроса;
 - `POST /recipes` — без JWT;
 - `GET /fridge_items` и `DELETE /delete_expired_products` — работают со всеми пользователями;
-- формат ошибок — `{"error": "<строка>"}`; JWT живёт 12 часов; пагинации нет.
+- формат ошибок — `{"error": "<строка>"}`; JWT живёт 12 часов; пагинация есть только у
+  `GET /recipes` (`limit`/`offset`), `GET /fridge_items` по-прежнему отдаёт всё.

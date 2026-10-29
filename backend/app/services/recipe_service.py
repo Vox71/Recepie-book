@@ -27,9 +27,10 @@ def _validated(payload: dict) -> dict:
     }
 
 
-def list_recipes(db: Database) -> list[dict]:
-    """Return all recipes."""
-    return [serialize_recipe(row) for row in recipes_model.list_recipes(db)]
+def list_recipes(db: Database, *, limit: int, offset: int) -> list[dict]:
+    """Return one page of recipes (openapi.yaml: ``?limit=&offset=``)."""
+    rows = recipes_model.list_recipes(db, limit=limit, offset=offset)
+    return [serialize_recipe(row) for row in rows]
 
 
 def get_recipe(db: Database, recipe_id: int) -> dict:
