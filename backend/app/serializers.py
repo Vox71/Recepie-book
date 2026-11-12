@@ -36,15 +36,24 @@ def as_int(value: Any) -> int | None:
     return int(value) if value is not None else None
 
 
-def serialize_recipe(row: dict, ingredient_list: Sequence[dict] | None = None) -> dict:
+def as_float(value: Any) -> float | None:
+    """Serialize a ``numeric`` column (``Decimal`` in psycopg2) as a JSON number."""
+    return float(value) if value is not None else None
+
+
+def serialize_recipe(
+    row: dict,
+    ingredient_list: Sequence[dict] | None = None,
+    steps: Sequence[dict] | None = None,
+    nutrition: dict | None = None,
+) -> dict:
     """Map a ``recipes`` row onto ``components.schemas.Recipe``.
 
-    ``ingredient_list`` is the normalized ``recipe_ingredients`` of this recipe (task 5);
-    it stays an empty array for a recipe created through ``POST /recipes``, because the
-    structured rows are written by the dataset importer only.  ``source_url``,
-    ``instructions`` and ``difficulty_level`` are ``null`` for an imported recipe: the
-    povarenok dataset has no instructions and no difficulty, and a manual recipe has no
-    source.
+    ``ingredient_list`` is the normalized ``recipe_ingredients`` of this recipe (task 5),
+    ``steps`` are the rows of ``recipe_steps`` and ``nutrition`` is the ``recipe_nutrition``
+    row (sprint 3, task 2).  All three stay empty for a recipe created through
+    ``POST /recipes``: the structured rows are written by the importer and the page parser
+    only, and a manual recipe has neither a source nor a parsed page.
     """
     return {
         "id": row["id"],
@@ -57,6 +66,36 @@ def serialize_recipe(row: dict, ingredient_list: Sequence[dict] | None = None) -
         # The default duration of a timer (sprint 3, task 1); null for an imported
         # recipe, because the povarenok dataset has no time at all.
         "cooking_time_minutes": as_int(row.get("cooking_time_minutes")),
+        # How many portions the parsed page declares; null when it does not say.
+        "servings": as_int(row.get("servings")),
+        # Steps as structured rows: user story 6 and the planned step timers build on
+        # them, while "instructions" above keeps the same text for older clients.
+        "steps": [
+            {
+                "number": as_int(step["number"]),
+                "text": step["text"],
+                "image_url": step.get("image_url"),
+            }
+            for step in (steps or [])
+        ],
+        "nutrition": _serialize_nutrition(nutrition),
+    }
+
+
+def _serialize_nutrition(nutrition: dict | None) -> dict | None:
+    """Serialize a ``recipe_nutrition`` row; every number is optional."""
+    if not nutrition:
+        return None
+    return {
+        "calories_total": as_float(nutrition.get("calories_total")),
+        "protein_total": as_float(nutrition.get("protein_total")),
+        "fat_total": as_float(nutrition.get("fat_total")),
+        "carbs_total": as_float(nutrition.get("carbs_total")),
+        "calories_per_100g": as_float(nutrition.get("calories_per_100g")),
+        "protein_per_100g": as_float(nutrition.get("protein_per_100g")),
+        "fat_per_100g": as_float(nutrition.get("fat_per_100g")),
+        "carbs_per_100g": as_float(nutrition.get("carbs_per_100g")),
+        "source": nutrition.get("source"),
     }
 
 

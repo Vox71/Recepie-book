@@ -3,11 +3,12 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **126 кейсов в 15 файлах**. 61 кейс работает без базы (проверка входных
+**Состав набора:** **151 кейс в 16 файлах**. 80 кейсов работают без базы (проверка входных
 данных, работа с токеном, служебные адреса, сам контракт `openapi.yaml`, компоненты ML-модуля,
 словарь аллергенов и его метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета
-и CLI импорта), 65 — против реальной PostgreSQL (включая саму схему БД, тела ответов, сверенные
-со схемами контракта, и таймеры). На каждый адрес из
+и CLI импорта, разбор страниц рецептов на сохранённых страницах), 71 — против реальной PostgreSQL
+(включая саму схему БД, тела ответов, сверенные со схемами контракта, таймеры и обогащение
+рецептов со страниц). На каждый адрес из
 `openapi.yaml` приходится 1–3 кейса; адресов теперь 25 — три из них про избранное
 (`/favorite_recipes`), три — про таймеры (`/timers`, `/timers/active`, `/timers/{id}`). Модуль
 рекомендаций по-прежнему включается флагом
@@ -19,9 +20,9 @@
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 61 passed, 65 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 80 passed, 71 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 126 passed
+                                 # с БД: 151 passed
 
 # покрытие (statement + branch) и порог 80 %, см. docs/test-coverage.md
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
@@ -39,7 +40,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 |---|---|---|---|---|
 | `tests/test_system.py` | 6 | 4 | 2 | служебные адреса, формат ошибок, лимит запросов (429) |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
-| `tests/test_recipes.py` | 10 | 0 | 10 | CRUD рецептов, пагинация списка, поля карточки рецепта, время приготовления |
+| `tests/test_recipes.py` | 11 | 0 | 11 | CRUD рецептов, пагинация списка, поля карточки рецепта, время приготовления, шаги/КБЖУ разобранного рецепта |
 | `tests/test_favorites.py` | 4 | 0 | 4 | избранное: JWT, порядок, идемпотентность |
 | `tests/test_fridge.py` | 7 | 1 | 6 | холодильник, пагинация списка и удаление просроченного, сериализация `last_added` |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
@@ -50,14 +51,15 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
 | `tests/test_allergens.py` | 16 | 13 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients`, границы фильтра |
 | `tests/test_recommendation_model.py` | 9 | 8 | 1 | модель v1: веса IDF, артефакт, откат на заглушку, метрики ранжирования, CLI |
-| `tests/test_openapi_contract.py` | 21 | 17 | 4 | сам контракт: валидность по спецификации, маршруты и лимиты из файла, тела реальных ответов по схемам (включая таймеры) |
+| `tests/test_openapi_contract.py` | 22 | 17 | 5 | сам контракт: валидность по спецификации, маршруты и лимиты из файла, тела реальных ответов по схемам (включая таймеры и разобранный рецепт) |
 | `tests/test_timers.py` | 11 | 1 | 10 | таймеры: время рецепта, дедлайн из базы, список активных, изоляция по токену, отмена, лимиты |
-| **Всего** | **126** | **61** | **65** | |
+| `tests/test_importer_pages.py` | 23 | 19 | 4 | разбор страницы povarenok: шаги, время, порции, КБЖУ, cp1251, ошибки сети, кэш, идемпотентность обогащения |
+| **Всего** | **151** | **80** | **71** | |
 
-Проверено 12.11.2026 на ветке `feat/recipe-timers`: без БД — `61 passed, 65 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `126 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Покрытие того же прогона: **88,6 % строк**
-и **82,6 % ветвей** (порог 80 %, подробности — `docs/test-coverage.md`). Те же 126 кейсов повторяет
+Проверено 12.11.2026 на ветке `feat/recipe-pages`: без БД — `80 passed, 71 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `151 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Покрытие того же прогона: **88,7 % строк**
+и **82,5 % ветвей** (порог 80 %, подробности — `docs/test-coverage.md`). Те же 151 кейс повторяет
 CI на PostgreSQL 15: там доступность базы контролируется отдельным шагом, поэтому набор не может
 «позеленеть» на одних пропусках.
 
@@ -121,7 +123,7 @@ CI на PostgreSQL 15: там доступность базы контролир
 - [x] `test_protected_rejects_bad_tokens` — 401 в 6 вариантах: нет заголовка, не Bearer,
   пустой токен, не JWT, просроченный токен, токен без `sub`.
 
-### `tests/test_recipes.py` — 10 кейсов (все с БД)
+### `tests/test_recipes.py` — 11 кейсов (все с БД)
 
 - [x] `test_create_recipe_stores_it_under_the_database_column_names` — 201 и запись в колонки
   `recipe_name`, `ingredients`, `instruction`, `difficulty_level` (API-поля `name`/`instructions`
@@ -147,6 +149,9 @@ CI на PostgreSQL 15: там доступность базы контролир
   `RecipeInput`: с ним рецепт отдаёт значение и в списке, и в БД; без него — `null` (у импортированных
   рецептов времени нет); 400 на `0`, `1441`, строку, `true` и дробное; `PUT` умеет и перезаписать,
   и обнулить.
+- [x] `test_a_parsed_recipe_exposes_steps_servings_and_nutrition` — разобранный рецепт отдаёт
+  `servings`, `steps` (номер, текст, фото; `null`, если фото нет) и `nutrition` (8 чисел + `source`)
+  и в карточке, и в странице списка: объект `Recipe` одинаков на всех адресах.
 - [x] `test_update_recipe` — 200, изменённые поля сохранены (остальные не потеряны);
   неполное тело → 400, неизвестный id → 404.
 - [x] `test_delete_recipe` — 200, рецепт исчез, список пуст; повторное удаление → 404.
@@ -364,6 +369,46 @@ CI на PostgreSQL 15: там доступность базы контролир
   `recipe_ingredients`, рецепт без ингредиентов пропускается, текстовая колонка работает как
   запасной вариант.
 
+### `tests/test_importer_pages.py` — 23 кейса (19 без БД)
+
+Спринт 3, задача 2: разбор страницы povarenok.ru и обогащение импортированных рецептов. Все кейсы
+офлайновые: страницы лежат в `tests/data/pages/*.html` (реальная разметка, обрезанная до нужных
+блоков), сеть подменяется подставным `opener`, как в `test_importer_povarenok.py`.
+
+- [x] `test_parse_full_page` — страница со шагами, временем, порциями и КБЖУ: имя, 7 шагов,
+  время 40 минут, 6 порций, 12 ингредиентов, 3 категории, описание, фото у каждого шага,
+  нумерованный `instruction_text` (`1. …\n2. …`).
+- [x] `test_nutrition_of_the_full_page` — две группы таблицы («Готового блюда» и «100 г блюда»)
+  раскладываются в восемь чисел.
+- [x] `test_a_page_without_time_and_servings` — время и порции `None`, остальное разбирается.
+- [x] `test_a_page_without_steps_and_nutrition` — пустые `steps`/`nutrition` и `instruction_text
+  is None` — это не ошибка.
+- [x] `test_step_text_keeps_the_line_breaks_of_the_source` — `<br>` источника остаётся переводом
+  строки внутри шага, а не создаёт новый шаг.
+- [x] `test_cooking_time_is_read_from_the_microdata` (6 параметров) — `PT40M` → 40,
+  `PT1H20M` → 80, `PT90M` → 90, текст «1 час 20 минут» → 80, `PT3D` → `None` (вне 1..1440),
+  «много» → `None`.
+- [x] `test_a_page_without_microdata_is_rejected` — не рецепт → `PageError` «no microdata».
+- [x] `test_a_page_with_microdata_but_no_name_is_rejected` — только `nutrition` без имени и шагов
+  → `PageError` «not a recipe page».
+- [x] `test_broken_markup_does_not_crash_the_parser` — незакрытые `<li>` не роняют парсер: текст
+  сохраняется как шаги.
+- [x] `test_fetch_decodes_windows_1251_and_identifies_itself` — cp1251 декодируется, `User-Agent`
+  начинается с `RecepieBookBot/`, таймаут передаётся в `opener`.
+- [x] `test_fetch_turns_http_error_into_page_error` — 403 → `PageError` с «HTTP 403».
+- [x] `test_fetch_turns_network_error_into_page_error` — таймаут сети → `PageError`, не `URLError`.
+- [x] `test_page_summary_describes_the_page` — сводка для `--url`/`--dry-run` готова к `json.dumps`.
+- [x] `test_enrich_saves_the_parsed_page` (БД) — шаги, время, порции, КБЖУ, `parsed_at` и
+  `parser_version = pages/1` попадают в базу; фото шага сохранено.
+- [x] `test_enrich_marks_a_page_without_steps` (БД) — строк шагов нет, но рецепт помечен
+  разобранным, чтобы не тянуть его снова; счётчик `without_steps`.
+- [x] `test_enrich_is_idempotent_and_uses_the_cache` (БД) — второй прогон: `candidates = 0`;
+  `--force` перезаписывает, но берёт страницу из кэша (сеть запрещена подставным `opener`).
+- [x] `test_enrich_counts_a_failed_page_and_keeps_going` (БД) — 404 одной страницы не мешает
+  обогатить вторую, «сломанная» остаётся `parsed_at IS NULL`.
+- [x] `test_load_page_reports_where_the_html_came_from` — кэш пишется при первом вызове и
+  используется при втором (один запрос на страницу).
+
 ### `tests/test_database.py` — 11 кейсов (все с БД)
 
 Файл — «исполняемая» копия схемы `docs/db_scheme.png` (с расширениями из `docs/db_schema.md`)
@@ -446,7 +491,7 @@ CI на PostgreSQL 15: там доступность базы контролир
   использование и завершается с кодом 0: документированная точка входа работает, а не только
   `app.importer.cli`.
 
-### `tests/test_openapi_contract.py` — 21 кейс (17 без БД)
+### `tests/test_openapi_contract.py` — 22 кейса (17 без БД)
 
 Проверяет не поведение отдельного адреса, а сам контракт: файл, его соответствие коду и тела
 ответов. Единственный файл набора, который открывает `openapi.yaml`.
@@ -482,6 +527,9 @@ CI на PostgreSQL 15: там доступность базы контролир
   (201, `ends_at` — `date-time` с offset и позже `started_at`), `GET /timers/active`,
   `DELETE /timers/{id}` и документированный повторный 404; плюс 400 «у рецепта нет времени» и 404
   на неизвестный рецепт.
+- [x] `test_a_parsed_recipe_matches_the_contract` — разобранный рецепт (спринт 3, задача 2):
+  `steps`, `servings` и `nutrition` соответствуют `Recipe`/`RecipeStep`/`RecipeNutrition` и в
+  карточке, и в странице списка; `nutrition` объявлен `nullable`, поэтому `null` тоже валиден.
 
 ## Примечания для отчётности
 
@@ -498,7 +546,7 @@ CI на PostgreSQL 15: там доступность базы контролир
   давали бы разный ответ около полуночи. Кейсы — `test_notify_expired_and_delete_expired_products_use_one_rule`
   и `test_delete_expired_products_uses_the_database_date_as_the_boundary`.
 - **Фикстуры** (`tests/conftest.py`): `app`/`client` — приложение без БД; `db_app`/`db_client`/`db`
-  — приложение с БД, фасад базы для SQL-проверок и очистка всех десяти таблиц перед каждым
+  — приложение с БД, фасад базы для SQL-проверок и очистка всех двенадцати таблиц перед каждым
   кейсом (`TRUNCATE ... RESTART IDENTITY CASCADE`); `register_user` и `add_fridge_items` —
   подготовка данных через настоящие HTTP-запросы; `add_relative_fridge_items` — продукты с датами
   относительно часов базы (`CURRENT_DATE + смещение`), чтобы проверять границу по тому же правилу;
@@ -518,10 +566,10 @@ CI на PostgreSQL 15: там доступность базы контролир
   методы с `app.url_map`, а лимиты `limit/offset` — с константами `app/validation.py`,
   (3) проверяет тела реальных ответов по схемам файла (`openapi-schema-validator` понимает
   `nullable`). Ручной список маршрутов, который раньше жил в `tests/test_system.py`, удалён.
-- **Результат последнего прогона** (12.11.2026, ветка `feat/recipe-timers`): без БД —
-  `61 passed, 65 skipped` (exit 0), с PostgreSQL 15 в контейнере — `126 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний; покрытие того же прогона — 88,6 % строк и 82,6 %
-  ветвей (`docs/test-coverage.md`). Те же 126 кейсов повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (12.11.2026, ветка `feat/recipe-pages`): без БД —
+  `80 passed, 71 skipped` (exit 0), с PostgreSQL 15 в контейнере — `151 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний; покрытие того же прогона — 88,7 % строк и 82,5 %
+  ветвей (`docs/test-coverage.md`). Те же 151 кейс повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
 - **Таймеры проверяются там, где это имеет смысл**: сервер отвечает за дедлайн (`ends_at`),
   изоляцию по токену и состояния, поэтому тесты сравнивают `ends_at − started_at` и содержимое

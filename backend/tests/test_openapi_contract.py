@@ -389,4 +389,24 @@ def test_timer_answers_match_the_contract(db_client, register_user):
         db_client.post("/timers", json={"recipe_id": 424242}, headers=headers), "/timers", "post"
     )
 
+
+def test_a_parsed_recipe_matches_the_contract(db_client, db):
+    """Sprint 3, task 2: steps, servings and nutrition are part of the Recipe schema."""
+    db_client.post("/recipes", json=RECIPE_PAYLOAD)
+    recipe_id = db_client.get("/recipes").get_json()[0]["id"]
+    db.execute("UPDATE recipes SET servings = 4 WHERE id = %s", (recipe_id,))
+    db.execute(
+        "INSERT INTO recipe_steps (recipe_id, step_number, text) VALUES (%s, 1, 'Шаг один.')",
+        (recipe_id,),
+    )
+    db.execute(
+        "INSERT INTO recipe_nutrition (recipe_id, calories_total, calories_per_100g) "
+        "VALUES (%s, 100.5, 50.2)",
+        (recipe_id,),
+    )
+
+    # Both the page of the list and the card must carry the three new fields.
+    assert_matches_contract(db_client.get("/recipes"), "/recipes", "get")
+    assert_matches_contract(db_client.get(f"/recipes/{recipe_id}"), "/recipes/{id}", "get")
+
     assert_matches_contract(db_client.get(f"/recipes/{recipe_id}"), "/recipes/{id}", "get")

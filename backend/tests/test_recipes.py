@@ -132,6 +132,10 @@ def test_get_recipe_by_id(db_client):
         "source_url": None,
         # No cooking time was sent, so the timer default stays unknown (task 1).
         "cooking_time_minutes": None,
+        # Nothing was parsed for a manual recipe (sprint 3, task 2).
+        "servings": None,
+        "steps": [],
+        "nutrition": None,
     }
 
     unknown = db_client.get("/recipes/424242")
@@ -185,11 +189,18 @@ def test_imported_recipe_exposes_the_source_and_the_ingredient_list(db_client, d
         "difficulty_level",
         "source_url",
         "cooking_time_minutes",
+        "servings",
+        "steps",
+        "nutrition",
     }
     assert recipe["source_url"] == source
     assert recipe["instructions"] is None
     assert recipe["difficulty_level"] is None
     assert recipe["cooking_time_minutes"] is None
+    # The dataset has no steps and no nutrition; only a parsed page adds them.
+    assert recipe["servings"] is None
+    assert recipe["steps"] == []
+    assert recipe["nutrition"] is None
     assert recipe["ingredient_list"] == [
         {"name": "Лосось", "quantity": "400 г"},
         {"name": "Картофель", "quantity": "3 шт."},
@@ -199,6 +210,50 @@ def test_imported_recipe_exposes_the_source_and_the_ingredient_list(db_client, d
     assert [item["ingredient_list"] for item in db_client.get("/recipes").get_json()] == [
         recipe["ingredient_list"]
     ]
+
+
+def test_a_parsed_recipe_exposes_steps_servings_and_nutrition(db_client, db):
+    """A recipe enriched from its page returns steps, servings and nutrition (task 2).
+
+    The rows are written by the page parser; the API only reads them, so the test seeds
+    them with SQL and checks that both the card and the page of the list carry them.
+    """
+    recipe = _create(db_client)
+    db.execute(
+        "UPDATE recipes SET servings = 4, parsed_at = now(), parser_version = 'pages/1' "
+        "WHERE id = %s",
+        (recipe["id"],),
+    )
+    db.execute(
+        "INSERT INTO recipe_steps (recipe_id, step_number, text, image_url) "
+        "VALUES (%s, 1, 'Нарезать овощи.', %s), (%s, 2, 'Тушить 20 минут.', NULL)",
+        (recipe["id"], "https://www.povarenok.ru/step.jpg", recipe["id"]),
+    )
+    db.execute(
+        """
+        INSERT INTO recipe_nutrition (
+            recipe_id, calories_total, protein_total, fat_total, carbs_total,
+            calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g
+        ) VALUES (%s, 2156.0, 200.6, 116.5, 39.4, 65.7, 6.1, 3.6, 1.2)
+        """,
+        (recipe["id"],),
+    )
+
+    card = db_client.get(f"/recipes/{recipe['id']}").get_json()
+
+    assert card["servings"] == 4
+    assert card["steps"] == [
+        {"number": 1, "text": "Нарезать овощи.", "image_url": "https://www.povarenok.ru/step.jpg"},
+        {"number": 2, "text": "Тушить 20 минут.", "image_url": None},
+    ]
+    assert card["nutrition"]["calories_total"] == 2156.0
+    assert card["nutrition"]["carbs_per_100g"] == 1.2
+    assert card["nutrition"]["source"] == "povarenok"
+
+    # The same object comes in the page of the list: one Recipe on every address.
+    page = db_client.get("/recipes").get_json()
+    assert page[0]["steps"] == card["steps"]
+    assert page[0]["nutrition"] == card["nutrition"]
 
 
 def test_a_recipe_declares_its_cooking_time(db_client, db):

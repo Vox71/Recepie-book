@@ -131,6 +131,9 @@ def test_suggest_recipes_uses_the_expired_products(db_client, register_user, add
         "difficulty_level",
         "source_url",
         "cooking_time_minutes",
+        "servings",
+        "steps",
+        "nutrition",
     }
 
     # generated_recipes keeps what was offered (docs/db_scheme.png).

@@ -66,6 +66,9 @@ def test_add_list_and_remove_favourites(db_client, register_user, db):
         "ingredient_list": [],
         "source_url": None,
         "cooking_time_minutes": None,
+        "servings": None,
+        "steps": [],
+        "nutrition": None,
     }
     assert db_client.get("/favorite_recipes", headers=_auth(other_token)).get_json() == []
 
