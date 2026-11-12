@@ -1,6 +1,6 @@
 # Схема базы данных
 
-Документ описывает фактическую структуру PostgreSQL-базы проекта: 9 таблиц, их колонки, типы,
+Документ описывает фактическую структуру PostgreSQL-базы проекта: 10 таблиц, их колонки, типы,
 ограничения, индексы и триггеры. Источник истины — [`backend/app/schema.sql`](../backend/app/schema.sql)
 (целевое состояние для новой базы) и [`backend/migrations`](../backend/migrations) (то же состояние
 для уже существующей). Документ сверен с ними и с тестом
@@ -53,6 +53,7 @@ psql "$DATABASE_URL" -c 'SELECT * FROM schema_migrations ORDER BY version'
 | `recipe_ingredients` | нормализованный список ингредиентов рецепта, по строке на ингредиент | `recipes.id` (CASCADE) |
 | `fridge_items` | содержимое холодильника | `users.id` (CASCADE) |
 | `favorite_recipes` | избранные рецепты пользователя | `users.id`, `recipes.id` (CASCADE) |
+| `timers` | таймеры приготовления: абсолютный дедлайн, статус (`running`/`finished`/`cancelled`) | `users.id`, `recipes.id` (CASCADE) |
 | `generated_recipes` | что именно выдавали пользователю (`/suggest_recipes`, `/recommend_recipes`) | `users.id`, `recipes.id` (CASCADE) |
 | `user_allergy_preferences` | аллергии пользователя, по строке на термин | `users.id` (CASCADE) |
 | `fridge_item_versions` | история версий продукта (наполняется триггером) | `fridge_items.item_id` (SET NULL) |
@@ -102,6 +103,7 @@ erDiagram
 | `instruction` | `text` | — | `NULL` для импортированных рецептов: в датасете инструкций нет |
 | `difficulty_level` | `character varying(50)` | — | `NULL` для импортированных рецептов |
 | `source_url` | `character varying(255)` | U `recipes_source_url_key` | естественный ключ импортированного рецепта (url на povarenok.ru); у ручных рецептов `NULL`, и PostgreSQL разрешает любое число `NULL` |
+| `cooking_time_minutes` | `integer` | CHECK (`cooking_time_minutes BETWEEN 1 AND 1440`) | время приготовления в минутах — время таймера по умолчанию (`POST /timers`); `NULL` у импортированных рецептов: в датасете времени нет |
 | `created_at` | `timestamp` | NN, по умолчанию `current_timestamp` | |
 | `updated_at` | `timestamp` | NN, по умолчанию `current_timestamp` | обновляется триггером `recipes_updated_at_trigger` при каждом `UPDATE` |
 
@@ -141,6 +143,30 @@ erDiagram
 
 Уникальность пары задаёт `favorite_recipes_user_recipe_key`, поэтому повторное добавление того же
 рецепта — идемпотентная операция (`ON CONFLICT DO NOTHING`), а не ошибка.
+
+### `timers`
+
+| Колонка | Тип | Ограничения | Комментарий |
+|---|---|---|---|
+| `id` | `integer` | PK, `serial` | |
+| `user_id` | `integer` | NN, FK → `users.id` ON DELETE CASCADE | владелец берётся из токена, в теле запроса его нет |
+| `recipe_id` | `integer` | NN, FK → `recipes.id` ON DELETE CASCADE | таймер всегда относится к рецепту |
+| `label` | `character varying(100)` | NN | подпись в списке таймеров; по умолчанию — название рецепта |
+| `duration_seconds` | `integer` | NN, CHECK (`duration_seconds BETWEEN 1 AND 86400`) | секунды, а не минуты: шаг «варить 90 секунд» бывает нужен |
+| `started_at` | `timestamptz` | NN, по умолчанию `now()` | часы базы, а не приложения |
+| `ends_at` | `timestamptz` | NN, CHECK (`ends_at > started_at`) | абсолютный дедлайн: `now() + duration` в одном `INSERT` |
+| `status` | `character varying(16)` | NN, по умолчанию `running`, CHECK (`running`/`finished`/`cancelled`) | истёкшие закрываются чтением списка, отменённые — `DELETE /timers/{id}` |
+| `closed_at` | `timestamptz` | — | когда таймер остановился: `ends_at` у истёкшего, момент запроса у отменённого |
+| `created_at` | `timestamp` | NN, по умолчанию `current_timestamp` | |
+
+Три отличия от остальной схемы, каждое осознанное (см. [`docs/timer.md`](timer.md)):
+
+- `started_at`/`ends_at`/`closed_at` — `timestamptz`, а не `timestamp` из диаграммы: таймер обязан
+  пережить смену часового пояса и переход на летнее время;
+- время окончания хранится **абсолютным моментом**, а не счётчиком: перезапуск процесса, второй
+  web-процесс и перезагрузка страницы не сдвигают отсчёт;
+- `duration_seconds` — секунды, потому что рецепт объявляет время в минутах, а шаги могут быть
+  короче минуты; API конвертирует `cooking_time_minutes × 60`.
 
 ### `generated_recipes`
 
@@ -200,6 +226,7 @@ erDiagram
 | `fridge_items_expiration_idx` | `fridge_items` | `expiration_date` | INDEX | уведомления воркера по всем пользователям |
 | `favorite_recipes_user_recipe_key` | `favorite_recipes` | `user_id`, `recipe_id` | UNIQUE | нет дублей в избранном |
 | `favorite_recipes_user_idx` | `favorite_recipes` | `user_id`, `created_at` | INDEX | список избранного от новых к старым |
+| `timers_user_status_idx` | `timers` | `user_id`, `status`, `ends_at` | INDEX | список активных таймеров: один пользователь, `running`, порядок по дедлайну |
 | `generated_recipes_user_idx` | `generated_recipes` | `user_id`, `generated_on` | INDEX | история выдач пользователя |
 | `user_allergy_preferences_user_idx` | `user_allergy_preferences` | `user_id` | INDEX | чтение профиля аллергий |
 | `fridge_item_versions_item_idx` | `fridge_item_versions` | `fridge_items_id`, `version` | INDEX | максимум версии в триггере |
@@ -259,7 +286,12 @@ erDiagram
   задачу синхронизации контракта);
 - `recipes.ingredients` названа правильно: в `docs/db_plan` слово написано с опечаткой
   («igredients»), а `openapi.yaml` и SQL используют `ingredients`;
-- `cuisine_type` в схеме отсутствует: колонка удалена из диаграммы и из контракта.
+- `cuisine_type` в схеме отсутствует: колонка удалена из диаграммы и из контракта;
+- `recipes.cooking_time_minutes` и таблица `timers` — расширения спринта 3 сверх диаграммы:
+  без времени рецепта таймеру нечего отсчитывать;
+- `timers.started_at`/`ends_at`/`closed_at` объявлены `timestamptz`, хотя остальные метки времени
+  в схеме — `timestamp` из диаграммы: наивное время ломает таймер при смене пояса и на переходе
+  на летнее время.
 
 ## Миграции
 
@@ -267,6 +299,8 @@ erDiagram
 |---|---|---|
 | `0001` | `0001_db_scheme_rework.sql` | удаляет три легаси-таблицы, но только пока в базе нет `favorite_recipes`: база, уже приведённая к `schema.sql`, не теряет данные, если `schema_migrations` ещё пуста |
 | `0002` | `0002_recipe_ingredients.sql` | `instruction` → `text`; `source_url`, `created_at`, `updated_at` в `recipes`; таблица `recipe_ingredients`; `favorite_recipes.created_at`; триггер `recipes_updated_at_trigger` |
+| `0003` | `0003_recipe_cooking_time.sql` | `recipes.cooking_time_minutes integer` + CHECK (`1..1440`), nullable: у импортированных рецептов времени нет |
+| `0004` | `0004_timers.sql` | таблица `timers` (дедлайн `timestamptz`, `status`, `closed_at`) и индекс `timers_user_status_idx`; создаётся только когда уже есть `users` и `recipes` (на новой базе её создаёт `schema.sql`) |
 
 Правила:
 
@@ -285,8 +319,8 @@ erDiagram
 
 | Кейс | Что проверяет |
 |---|---|
-| `test_tables_columns_and_primary_keys_match_the_diagram` | ровно 9 таблиц, тип и длина каждой колонки, первичные ключи, отсутствие `cuisine_type` |
-| `test_foreign_keys_and_the_email_index_match_the_diagram` | все внешние ключи с правилом `ON DELETE`, уникальный индекс `lower(email)` |
+| `test_tables_columns_and_primary_keys_match_the_diagram` | ровно 10 таблиц, тип и длина каждой колонки (включая `timers` с `timestamptz`), первичные ключи, отсутствие `cuisine_type` |
+| `test_foreign_keys_and_the_email_index_match_the_diagram` | все внешние ключи с правилом `ON DELETE` (включая `timers → users/recipes`), уникальный индекс `lower(email)` |
 | `test_triggers_and_functions_of_the_fridge_history_exist` | оба триггера и обе функции истории холодильника |
 | `test_database_constraints_are_enforced` | `CHECK`, `NOT NULL`, `UNIQUE` (включая регистронезависимый e-mail) |
 | `test_fridge_history_records_the_insert_and_the_update` | версии и аудит после `INSERT`/`UPDATE` |

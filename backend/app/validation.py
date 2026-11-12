@@ -32,6 +32,16 @@ MAX_INSTRUCTION_LENGTH = MAX_TEXT_FIELD_LENGTH  # recipes.instruction
 MAX_DIFFICULTY_LENGTH = 50  # recipes.difficulty_level
 MAX_PRODUCT_NAME_LENGTH = 100  # fridge_items.product_name
 MAX_TERM_LENGTH = 100  # user_allergy_preferences.allergy_name
+# A recipe declares its time in minutes (recipes.cooking_time_minutes); a timer counts
+# seconds, so a step like "варить 90 секунд" is expressible.  A day is the upper bound:
+# anything longer is a reminder, not a cooking timer (docs/timer.md).
+MIN_COOKING_TIME_MINUTES = 1  # recipes.cooking_time_minutes
+MAX_COOKING_TIME_MINUTES = 1440  # recipes.cooking_time_minutes
+MAX_TIMER_DURATION_SECONDS = 86400  # timers.duration_seconds
+MAX_TIMER_LABEL_LENGTH = 100  # timers.label
+# Guards the table against a client that starts timers in a loop: the list behind
+# GET /timers/active is meant to be read by a human, not paginated.
+MAX_ACTIVE_TIMERS = 20
 # Pagination of list endpoints (CONTRIBUTION.md §4): a page is at most 200 rows, so a
 # client cannot ask for all 147 000 imported recipes by accident (openapi.yaml).
 DEFAULT_PAGE_LIMIT = 50
@@ -112,6 +122,36 @@ def require_positive_int(data: dict, field: str) -> int:
         raise BadRequest(f"Field '{field}' must be an integer")
     if value <= 0:
         raise BadRequest(f"Field '{field}' must be greater than zero")
+    return value
+
+
+def require_int_in_range(data: dict, field: str, *, minimum: int, maximum: int) -> int:
+    """Return a required integer field inside ``[minimum, maximum]``.
+
+    The bounds are the ones declared in ``openapi.yaml`` and in the schema (the CHECK
+    constraints of ``recipes.cooking_time_minutes``/``timers.duration_seconds``), so an
+    out-of-range value is a 400 instead of a database error.
+    """
+    value = data.get(field)
+    if value is None:
+        raise BadRequest(f"Field '{field}' is required")
+    return _check_range(value, field, minimum=minimum, maximum=maximum)
+
+
+def optional_int_in_range(data: dict, field: str, *, minimum: int, maximum: int) -> int | None:
+    """Return an optional integer field inside ``[minimum, maximum]`` (``None`` if absent)."""
+    value = data.get(field)
+    if value is None:
+        return None
+    return _check_range(value, field, minimum=minimum, maximum=maximum)
+
+
+def _check_range(value: Any, field: str, *, minimum: int, maximum: int) -> int:
+    """Validate the type and the bounds of an integer field."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise BadRequest(f"Field '{field}' must be an integer")
+    if value < minimum or value > maximum:
+        raise BadRequest(f"Field '{field}' must be between {minimum} and {maximum}, got {value}")
     return value
 
 

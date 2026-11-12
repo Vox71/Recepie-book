@@ -6,6 +6,7 @@
 --   recipe_ingredients       normalized ingredient lists of a recipe
 --   fridge_items             fridge contents
 --   favorite_recipes         favourite recipes of a user
+--   timers                   running timers of a recipe (sprint 3, task 1)
 --   generated_recipes        history of generated recipe lists
 --   user_allergy_preferences normalized allergies of a user
 --   fridge_item_versions     version history of a fridge item (trigger)
@@ -49,6 +50,11 @@ CREATE TABLE IF NOT EXISTS recipes (
     -- number of NULLs in a UNIQUE constraint, which is what the parser needs to
     -- stay idempotent (INSERT ... ON CONFLICT (source_url) DO NOTHING).
     source_url       varchar(255),
+    -- How long the recipe takes, in minutes: the default duration of a timer
+    -- (POST /timers, docs/timer.md).  NULL for every imported recipe - the
+    -- povarenok dataset has no time at all - so the client asks for the duration
+    -- explicitly for them.
+    cooking_time_minutes integer   CHECK (cooking_time_minutes BETWEEN 1 AND 1440),
     created_at       timestamp    NOT NULL DEFAULT current_timestamp,
     -- Maintained by the recipes_updated_at_trigger below, so every writer
     -- (API, parser, psql shell) leaves the same value.
@@ -120,6 +126,35 @@ BEGIN
     END IF;
 END
 $$;
+
+-- Timers of a recipe (sprint 3, task 1). A timer is an absolute deadline, not a
+-- counter: ends_at is computed by the database, so a restart, a second worker or a
+-- reloaded page cannot shift it; the client only renders ends_at - server_time with a
+-- monotonic clock (docs/timer.md).  started_at/ends_at/closed_at are timestamptz,
+-- unlike the other timestamp columns, which follow the diagram: a naive time breaks on
+-- a time zone change or a DST switch (docs/db_schema.md).
+CREATE TABLE IF NOT EXISTS timers (
+    id               serial       PRIMARY KEY,
+    user_id          integer      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    recipe_id        integer      NOT NULL REFERENCES recipes (id) ON DELETE CASCADE,
+    -- What the user sees in the list ("Гречка", "Духовка"): defaults to the recipe name.
+    label            varchar(100) NOT NULL,
+    -- Duration in seconds, not minutes: "варить 90 секунд" is a real case.
+    duration_seconds integer      NOT NULL CHECK (duration_seconds BETWEEN 1 AND 86400),
+    started_at       timestamptz  NOT NULL DEFAULT now(),
+    ends_at          timestamptz  NOT NULL,
+    -- running -> finished (ends_at passed) or cancelled (DELETE /timers/{id}).
+    status           varchar(16)  NOT NULL DEFAULT 'running'
+                     CHECK (status IN ('running', 'finished', 'cancelled')),
+    -- When the timer stopped: ends_at for a finished one, the moment of the request for
+    -- a cancelled one; NULL while running.
+    closed_at        timestamptz,
+    created_at       timestamp    NOT NULL DEFAULT current_timestamp,
+    CONSTRAINT timers_ends_after_start_check CHECK (ends_at > started_at)
+);
+
+-- The list behind GET /timers/active: one user, running timers, ordered by ends_at.
+CREATE INDEX IF NOT EXISTS timers_user_status_idx ON timers (user_id, status, ends_at);
 
 CREATE TABLE IF NOT EXISTS generated_recipes (
     id           serial    PRIMARY KEY,

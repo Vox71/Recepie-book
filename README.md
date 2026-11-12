@@ -23,7 +23,7 @@ backend/
 │   ├── embeddings.py  # эмбеддинги (ленивая загрузка, включаются EMBEDDINGS_ENABLED)
 │   ├── ml/            # ML-модуль: предобработка, векторизация, TF-IDF модель v1, KNN, аллергены, метрики
 │   ├── importer/      # импорт датасета povarenok: чтение, нормализация, CLI, скачивание
-│   ├── schema.sql     # DDL: 9 таблиц, индексы, 3 триггера (идемпотентный)
+│   ├── schema.sql     # DDL: 10 таблиц, индексы, 3 триггера (идемпотентный)
 │   ├── migrate.py     # миграции: python -m app.migrate + журнал schema_migrations
 │   ├── models/        # SQL-слой: по модулю на таблицу, только параметризованные запросы
 │   ├── services/      # бизнес-логика
@@ -56,16 +56,17 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
 
 ### Схема БД
 
-Структура соответствует `docs/db_scheme.png` (9 таблиц; подробное описание каждой колонки,
+Структура соответствует `docs/db_scheme.png` (10 таблиц; подробное описание каждой колонки,
 индекса и триггера — [docs/db_schema.md](docs/db_schema.md)):
 
 | Таблица | Назначение |
 |---|---|
 | `users` | пользователи: `username`, `password` (scrypt-хэш), `email`, `allergies`/`preferences` (термины через запятую) |
-| `recipes` | рецепты: `recipe_name`, `ingredients`, `instruction`, `difficulty_level`, `source_url` (ключ импорта), `created_at`/`updated_at` |
+| `recipes` | рецепты: `recipe_name`, `ingredients`, `instruction`, `difficulty_level`, `source_url` (ключ импорта), `cooking_time_minutes`, `created_at`/`updated_at` |
 | `recipe_ingredients` | ингредиенты рецепта по строкам: `ingredient_name`, `quantity_text`, `sort_order` |
 | `fridge_items` | продукты: `item_id` (ключ), `user_id`, `product_name`, `expiration_date`, `quantity`, `last_added` |
 | `favorite_recipes` | избранные рецепты пользователя (`created_at` — порядок выдачи) |
+| `timers` | таймеры приготовления: `recipe_id`, `label`, `duration_seconds`, `started_at`/`ends_at` (`timestamptz`), `status` |
 | `generated_recipes` | что именно выдавали пользователю (`/suggest_recipes`, `/recommend_recipes`) |
 | `user_allergy_preferences` | аллергии пользователя, по строке на термин |
 | `fridge_item_versions` | история версий продукта (наполняется триггером) |
@@ -78,7 +79,10 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
 - `recipe_ingredients` — ингредиенты рецепта по строкам (`ingredient_name`, `quantity_text`,
   `sort_order`): словарь `{ингредиент: количество}` из датасета, разложенный по таблице;
 - `recipes.created_at`/`updated_at` и `favorite_recipes.created_at` — метки времени;
-  `updated_at` обновляет триггер `recipes_updated_at_trigger`, а не код приложения.
+  `updated_at` обновляет триггер `recipes_updated_at_trigger`, а не код приложения;
+- `recipes.cooking_time_minutes` и таблица `timers` — таймер приготовления (спринт 3, задача 1):
+  время рецепта в минутах и абсолютный дедлайн в `timestamptz`, чтобы отсчёт пережил перезагрузку,
+  второй web-процесс и смену часового пояса ([docs/timer.md](docs/timer.md)).
 
 Осознанные отклонения от диаграммы (они же — комментарии в `app/schema.sql`):
 
@@ -98,7 +102,7 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
   написано с опечаткой («igredients»), а `openapi.yaml` и SQL-запросы используют `ingredients`.
 
 Изменения структуры БД оформляются миграциями (`backend/migrations`, последняя —
-`0002_recipe_ingredients.sql`). `app/schema.sql` — это целевое состояние для новой базы, миграции
+`0004_timers.sql`). `app/schema.sql` — это целевое состояние для новой базы, миграции
 переведут в него уже существующую:
 
 ```bash
@@ -127,11 +131,36 @@ python worker.py --interval-minutes 60  # цикл по расписанию
 | `instructions` | инструкция (`recipes.instruction`, `text`) | да, у импортированных рецептов |
 | `difficulty_level` | сложность (`varchar(50)`) | да, у импортированных рецептов |
 | `source_url` | ссылка на источник и естественный ключ импорта (`varchar(255)`) | да, у рецептов, созданных через API |
+| `cooking_time_minutes` | время приготовления в минутах (1..1440) — время таймера по умолчанию (`POST /timers`) | да, у импортированных рецептов: в датасете времени нет |
 
 Почему так: в датасете povarenok нет ни инструкций, ни сложности, поэтому `POST /recipes`
 требует эти поля (ручной рецепт полный), а импортированный отдаёт `null` — иначе пришлось бы
 выдумывать данные. Импортировать и создавать вручную можно в одной базе, поэтому клиент должен
 быть готов к обоим вариантам; схема это разрешает явно (`nullable: true`).
+
+### Таймеры приготовления
+
+Пользователь открывает рецепт и запускает таймер на время, объявленное в рецепте
+(`cooking_time_minutes`); для импортированных рецептов времени нет, поэтому длительность
+передаётся явно. Адреса — `POST /timers`, `GET /timers/active`, `DELETE /timers/{id}` (все под
+токеном, владелец берётся только из него).
+
+```bash
+curl -s -X POST http://localhost:8000/timers \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"recipe_id": 1}'                       # длительность = cooking_time_minutes × 60
+curl -s http://localhost:8000/timers/active -H "Authorization: Bearer $TOKEN"
+curl -s -X DELETE http://localhost:8000/timers/1 -H "Authorization: Bearer $TOKEN"
+```
+
+Ключевое решение: **сервер хранит абсолютный дедлайн**, а не счётчик. Ответ содержит пару
+`ends_at` + `server_time`, и клиент считает остаток как их разность по монотонным часам страницы —
+поэтому перезагрузка, второй web-процесс, неверные часы телефона и смена пояса отсчёт не сдвигают.
+Истёкшие таймеры закрывает само чтение списка, отдельный воркер не нужен.
+
+Границы честные: пока вкладка открыта — точность ±0,25 с; в фоне браузер может задержать звонок
+до минуты; при закрытой вкладке звонка не будет (нужен Web Push, отдельная задача). Алгоритм
+клиента, таблица точности и ограничения — [docs/timer.md](docs/timer.md).
 
 ### Просроченные продукты
 
@@ -275,19 +304,20 @@ python -m app.ml.allergen_eval --json   # то же машинно-читаем�
 команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
 
 
-Набор — 110 кейсов в 14 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
-файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, четыре
+Набор — 126 кейсов в 15 файлах: по 1–3 кейса на каждый из 25 адресов (успех + отказ), отдельный
+файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное,
+`tests/test_timers.py` про таймеры, четыре
 файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`,
 `test_recommendation_model.py`), `tests/test_importer_povarenok.py` про импорт датасета и
 `tests/test_openapi_contract.py`, который проверяет сам `openapi.yaml`: валидность файла, совпадение
 адресов и лимитов с кодом и тела реальных ответов по схемам.
-57 кейсов идут без базы, 53 — против PostgreSQL.
+61 кейс идёт без базы, 65 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 57 passed, 53 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 61 passed, 65 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 110 passed
+                                # с БД: 126 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 
@@ -296,13 +326,13 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
   coverage run -m pytest && coverage report
 ```
 
-Полный прогон против реальной базы (`110 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`126 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 ### Покрытие тестами
 
-Измерено `coverage.py` на полном наборе с PostgreSQL: **87,8 % строк** (2060 из 2346) и
-**81,2 % ветвей** (688 из 847), комбинированное покрытие — 86,1 %. Порог 80 % записан в
+Измерено `coverage.py` на полном наборе с PostgreSQL: **88,6 % строк** (2166 из 2445) и
+**82,6 % ветвей** (729 из 883), комбинированное покрытие — 87,0 %. Порог 80 % записан в
 `backend/pyproject.toml` (`[tool.coverage.report] fail_under`) и проверяется в CI, поэтому
 просадка покрытия ломает сборку.
 

@@ -36,6 +36,7 @@ EXPECTED_TABLES = frozenset(
         "user_allergy_preferences",
         "fridge_item_versions",
         "fridge_item_audit",
+        "timers",
     }
 )
 # ``character varying`` columns are compared as (data type, maximum length).
@@ -57,8 +58,23 @@ EXPECTED_COLUMNS = {
         "instruction": ("text", None),
         "difficulty_level": ("character varying", 50),
         "source_url": ("character varying", 255),
+        # Sprint 3, task 1: the default duration of a timer; NULL for imported recipes.
+        "cooking_time_minutes": ("integer", None),
         "created_at": ("timestamp without time zone", None),
         "updated_at": ("timestamp without time zone", None),
+    },
+    "timers": {
+        "id": ("integer", None),
+        "user_id": ("integer", None),
+        "recipe_id": ("integer", None),
+        "label": ("character varying", 100),
+        "duration_seconds": ("integer", None),
+        # timestamptz on purpose: a naive time breaks on a time zone change or DST.
+        "started_at": ("timestamp with time zone", None),
+        "ends_at": ("timestamp with time zone", None),
+        "status": ("character varying", 16),
+        "closed_at": ("timestamp with time zone", None),
+        "created_at": ("timestamp without time zone", None),
     },
     "recipe_ingredients": {
         "id": ("integer", None),
@@ -123,6 +139,7 @@ EXPECTED_PRIMARY_KEYS = {
     "user_allergy_preferences": {"id"},
     "fridge_item_versions": {"id"},
     "fridge_item_audit": {"id"},
+    "timers": {"id"},
 }
 # (child table, child column) -> (parent table, parent column, ON DELETE rule)
 EXPECTED_FOREIGN_KEYS = {
@@ -135,6 +152,8 @@ EXPECTED_FOREIGN_KEYS = {
     ("user_allergy_preferences", "user_id"): ("users", "id", "CASCADE"),
     ("fridge_item_versions", "fridge_items_id"): ("fridge_items", "item_id", "SET NULL"),
     ("fridge_item_audit", "user_id"): ("users", "id", "CASCADE"),
+    ("timers", "user_id"): ("users", "id", "CASCADE"),
+    ("timers", "recipe_id"): ("recipes", "id", "CASCADE"),
 }
 
 PRIMARY_KEY_SQL = """

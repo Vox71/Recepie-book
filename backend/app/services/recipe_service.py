@@ -6,10 +6,13 @@ from ..db import Database
 from ..errors import NotFound
 from ..models import recipes as recipes_model
 from ..validation import (
+    MAX_COOKING_TIME_MINUTES,
     MAX_DIFFICULTY_LENGTH,
     MAX_INSTRUCTION_LENGTH,
     MAX_RECIPE_NAME_LENGTH,
     MAX_TEXT_FIELD_LENGTH,
+    MIN_COOKING_TIME_MINUTES,
+    optional_int_in_range,
     require_string,
 )
 from .recipe_presenter import present_recipe, present_recipes
@@ -23,6 +26,14 @@ def _validated(payload: dict) -> dict:
         "instructions": require_string(payload, "instructions", max_length=MAX_INSTRUCTION_LENGTH),
         "difficulty_level": require_string(
             payload, "difficulty_level", max_length=MAX_DIFFICULTY_LENGTH
+        ),
+        # Optional (sprint 3, task 1): recipes imported from povarenok have no time, so
+        # an absent value stays NULL instead of being a 400.
+        "cooking_time_minutes": optional_int_in_range(
+            payload,
+            "cooking_time_minutes",
+            minimum=MIN_COOKING_TIME_MINUTES,
+            maximum=MAX_COOKING_TIME_MINUTES,
         ),
     }
 
