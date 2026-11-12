@@ -20,7 +20,7 @@ are development-only: ``backend/requirements-dev.txt`` (CONTRIBUTION.md §11).
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -216,24 +216,28 @@ def test_the_pagination_limits_match_the_application_constants():
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "kwargs", "status"),
+    ("method", "path", "kwargs", "status", "documented"),
     [
-        ("get", "/protected", {}, 401),
-        ("get", "/favorite_recipes", {}, 401),
-        ("get", "/notify_expired", {}, 401),
-        ("get", "/recipes", {"query_string": {"limit": 0}}, 400),
-        ("get", "/fridge_items", {"query_string": {"offset": "abc"}}, 400),
-        ("post", "/register", {"json": {"username": "contract"}}, 400),
-        ("post", "/login", {"json": {}}, 400),
-        ("post", "/recipes", {"json": "not an object"}, 400),
+        ("get", "/protected", {}, 401, None),
+        ("get", "/favorite_recipes", {}, 401, None),
+        ("get", "/notify_expired", {}, 401, None),
+        ("post", "/timers", {"json": {"recipe_id": 1}}, 401, None),
+        ("get", "/timers/active", {}, 401, None),
+        # The address in the file has a parameter, the request needs a value.
+        ("delete", "/timers/1", {}, 401, "/timers/{id}"),
+        ("get", "/recipes", {"query_string": {"limit": 0}}, 400, None),
+        ("get", "/fridge_items", {"query_string": {"offset": "abc"}}, 400, None),
+        ("post", "/register", {"json": {"username": "contract"}}, 400, None),
+        ("post", "/login", {"json": {}}, 400, None),
+        ("post", "/recipes", {"json": "not an object"}, 400, None),
     ],
 )
-def test_failure_answers_match_the_error_schema(client, method, path, kwargs, status):
+def test_failure_answers_match_the_error_schema(client, method, path, kwargs, status, documented):
     """Every failure has the documented status and the documented ``{"error": ...}`` body."""
     response = client.open(path, method=method.upper(), **kwargs)
 
     assert response.status_code == status, response.get_json()
-    assert_matches_contract(response, path, method)
+    assert_matches_contract(response, documented or path, method)
 
 
 def test_the_system_answers_match_the_contract(client):
@@ -344,4 +348,45 @@ def test_an_imported_recipe_matches_the_contract(db_client, db):
     )
 
     assert_matches_contract(db_client.get("/recipes"), "/recipes", "get")
+
+
+def test_timer_answers_match_the_contract(db_client, register_user):
+    """Timers (sprint 3, task 1): created, listed, cancelled and the documented failures.
+
+    The deadline pair ``ends_at``/``server_time`` is what the browser needs to render a
+    countdown without drift (``docs/timer.md``), so both values must be ``date-time``
+    with an offset and must be consistent with ``remaining_seconds``.
+    """
+    _, token = register_user(email="timers@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    db_client.post("/recipes", json={**RECIPE_PAYLOAD, "cooking_time_minutes": 2})
+    db_client.post("/recipes", json={**RECIPE_PAYLOAD, "name": "Без времени"})
+    recipes = {item["name"]: item["id"] for item in db_client.get("/recipes").get_json()}
+    recipe_id = recipes[RECIPE_PAYLOAD["name"]]
+
+    created = db_client.post("/timers", json={"recipe_id": recipe_id}, headers=headers)
+    assert_matches_contract(created, "/timers", "post")
+    timer = created.get_json()["timer"]
+    assert timer["duration_seconds"] == 120
+    assert datetime.fromisoformat(timer["ends_at"]) > datetime.fromisoformat(timer["started_at"])
+
+    listed = db_client.get("/timers/active", headers=headers)
+    assert_matches_contract(listed, "/timers/active", "get")
+    assert [item["id"] for item in listed.get_json()["timers"]] == [timer["id"]]
+
+    cancelled = db_client.delete(f"/timers/{timer['id']}", headers=headers)
+    assert_matches_contract(cancelled, "/timers/{id}", "delete")
+    # The documented 404: the timer is already cancelled.
+    assert_matches_contract(
+        db_client.delete(f"/timers/{timer['id']}", headers=headers), "/timers/{id}", "delete"
+    )
+
+    # Documented 400 (recipe without a time and no duration) and 404 (unknown recipe).
+    untimed = db_client.post("/timers", json={"recipe_id": recipes["Без времени"]}, headers=headers)
+    assert_matches_contract(untimed, "/timers", "post")
+    assert_matches_contract(
+        db_client.post("/timers", json={"recipe_id": 424242}, headers=headers), "/timers", "post"
+    )
+
     assert_matches_contract(db_client.get(f"/recipes/{recipe_id}"), "/recipes/{id}", "get")

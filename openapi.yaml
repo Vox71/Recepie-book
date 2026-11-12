@@ -21,6 +21,7 @@ tags:
   - name: Fridge
   - name: Notifications
   - name: Recommendations
+  - name: Timers
 
 paths:
   /:
@@ -626,6 +627,120 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /timers:
+    post:
+      tags: [Timers]
+      summary: Запустить таймер рецепта
+      description: >
+        Пользователь открывает рецепт и запускает таймер на время, которое объявлено
+        в рецепте (recipes.cooking_time_minutes). Если duration_seconds не передан,
+        сервер берёт время рецепта; для рецептов, импортированных из povarenok, времени
+        нет (cooking_time_minutes = null), поэтому им duration_seconds обязателен.
+
+        Сервер хранит абсолютный дедлайн ends_at, а клиент считает остаток как
+        «ends_at − server_time» по монотонным часам страницы: перезагрузка, второе
+        устройство и неверные часы телефона отсчёт не сдвигают (docs/timer.md).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimerInput'
+      responses:
+        '201':
+          description: Таймер запущен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimerCreatedResponse'
+        '400':
+          description: >-
+            Тело не объект; нет recipe_id; duration_seconds не целое, вне 1..86400 или
+            не передан вместе с рецептом без cooking_time_minutes; label длиннее 100
+            символов; уже запущено 20 таймеров.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Рецепт с таким recipe_id не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /timers/active:
+    get:
+      tags: [Timers]
+      summary: Активные таймеры пользователя
+      description: >
+        Таймеры текущего пользователя (владелец берётся только из токена), которые
+        ещё идут: сначала те, что закончатся раньше. Истёкшие таймеры закрываются
+        этим же запросом (status = finished), поэтому отдельный воркер не нужен.
+
+        Ответ содержит server_time — точку отсчёта для восстановления таймера после
+        перезагрузки страницы.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Активные таймеры (пустой массив, если ни один не идёт)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveTimersResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /timers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    delete:
+      tags: [Timers]
+      summary: Отменить таймер
+      description: >
+        Останавливает таймер пользователя из токена. Чужой, неизвестный или уже
+        завершённый таймер — 404: ответ не раскрывает, существует ли строка (то же
+        правило, что у избранного).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Таймер отменён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Таймер не найден или уже не идёт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -770,7 +885,8 @@ components:
         указано в описании поля: импортированный рецепт не имеет инструкции, сложности и
         источника, а ручной рецепт не имеет source_url и строк recipe_ingredients.
       required:
-        [id, name, ingredients, ingredient_list, instructions, difficulty_level, source_url]
+        [id, name, ingredients, ingredient_list, instructions, difficulty_level, source_url,
+         cooking_time_minutes]
       properties:
         id:
           type: integer
@@ -814,6 +930,16 @@ components:
           description: >
             Колонка recipes.source_url (varchar(255)) — естественный ключ импорта и
             ссылка на источник рецепта. null у рецептов, созданных через POST /recipes.
+        cooking_time_minutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          nullable: true
+          description: >
+            Колонка recipes.cooking_time_minutes: сколько готовится блюдо, в минутах.
+            Это время по умолчанию для POST /timers. null у рецептов, импортированных
+            из povarenok: в датасете времени нет, поэтому таймер для них запускают с
+            явным duration_seconds.
 
     RecipeInput:
       type: object
@@ -830,6 +956,15 @@ components:
         difficulty_level:
           type: string
           maxLength: 50
+        cooking_time_minutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          nullable: true
+          description: >
+            Время приготовления в минутах (recipes.cooking_time_minutes). Поле
+            необязательное: без него рецепт сохраняется с NULL, а таймер требует
+            явный duration_seconds.
 
     FavoriteInput:
       type: object
@@ -923,3 +1058,95 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Recipe'
+
+    TimerInput:
+      type: object
+      required: [recipe_id]
+      properties:
+        recipe_id:
+          type: integer
+          minimum: 1
+          description: Рецепт, к которому относится таймер (recipes.id).
+        duration_seconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+          nullable: true
+          description: >
+            Длительность в секундах. Необязательна: без неё сервер берёт
+            recipes.cooking_time_minutes × 60. Для рецепта без времени (импортированного
+            из povarenok) поле обязательно, иначе 400.
+        label:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: >
+            Подпись таймера в списке («Гречка», «Духовка»). По умолчанию — название
+            рецепта, обрезанное до 100 символов (timers.label).
+
+    Timer:
+      type: object
+      required: [id, recipe_id, label, duration_seconds, started_at, ends_at,
+                 remaining_seconds, status]
+      properties:
+        id:
+          type: integer
+        recipe_id:
+          type: integer
+        label:
+          type: string
+          maxLength: 100
+        duration_seconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        started_at:
+          type: string
+          format: date-time
+          description: Когда таймер запустили (timers.started_at, часы базы).
+        ends_at:
+          type: string
+          format: date-time
+          description: >
+            Абсолютный дедлайн (timers.ends_at). Вместе с server_time это единственный
+            источник времени для клиента: часы устройства не используются.
+        remaining_seconds:
+          type: integer
+          minimum: 0
+          description: >
+            Сколько осталось по часам базы в момент ответа. Поле для отладки и проверок:
+            клиент считает остаток сам из ends_at и server_time, чтобы не зависеть от
+            задержки сети.
+        status:
+          type: string
+          enum: [running, finished, cancelled]
+
+    TimerCreatedResponse:
+      type: object
+      required: [server_time, timer]
+      properties:
+        server_time:
+          type: string
+          format: date-time
+          description: >
+            Часы сервера в момент ответа. Клиент считает остаток как
+            «ends_at − server_time» и дальше ведёт его по монотонным часам страницы
+            (docs/timer.md), поэтому отсчёт не дрейфует.
+        timer:
+          $ref: '#/components/schemas/Timer'
+
+    ActiveTimersResponse:
+      type: object
+      required: [server_time, timers]
+      properties:
+        server_time:
+          type: string
+          format: date-time
+          description: >
+            Часы сервера в момент ответа — точка отсчёта для восстановления таймеров
+            после перезагрузки страницы или на втором устройстве.
+        timers:
+          type: array
+          description: Идущие таймеры, сначала те, что закончатся раньше.
+          items:
+            $ref: '#/components/schemas/Timer'

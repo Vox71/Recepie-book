@@ -19,7 +19,7 @@ from app.config import Settings
 TEST_JWT_SECRET = "test-jwt-secret-not-for-production-use"
 DEFAULT_PASSWORD = "sup3r-secret-password"
 TRUNCATE_STATEMENT = (
-    "TRUNCATE users, recipes, recipe_ingredients, fridge_items, favorite_recipes, "
+    "TRUNCATE users, recipes, recipe_ingredients, fridge_items, favorite_recipes, timers, "
     "generated_recipes, user_allergy_preferences, fridge_item_versions, fridge_item_audit "
     "RESTART IDENTITY CASCADE"
 )

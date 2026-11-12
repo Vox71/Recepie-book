@@ -54,6 +54,28 @@ def serialize_recipe(row: dict, ingredient_list: Sequence[dict] | None = None) -
         "instructions": row["instruction"],
         "difficulty_level": row["difficulty_level"],
         "source_url": row["source_url"],
+        # The default duration of a timer (sprint 3, task 1); null for an imported
+        # recipe, because the povarenok dataset has no time at all.
+        "cooking_time_minutes": as_int(row.get("cooking_time_minutes")),
+    }
+
+
+def serialize_timer(row: dict) -> dict:
+    """Map a ``timers`` row onto ``components.schemas.Timer``.
+
+    ``remaining_seconds`` and ``server_time`` are computed by the database in the same
+    statement (``app/models/timers.py``): the client renders ``ends_at - server_time``
+    with a monotonic clock, so the answer never depends on the clock of the device.
+    """
+    return {
+        "id": row["id"],
+        "recipe_id": row["recipe_id"],
+        "label": row["label"],
+        "duration_seconds": as_int(row["duration_seconds"]),
+        "started_at": iso_datetime(row["started_at"]),
+        "ends_at": iso_datetime(row["ends_at"]),
+        "remaining_seconds": as_int(row["remaining_seconds"]),
+        "status": row["status"],
     }
 
 

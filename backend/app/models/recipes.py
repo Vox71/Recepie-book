@@ -6,7 +6,10 @@ from typing import Sequence
 
 from ..db import Database
 
-RECIPE_COLUMNS = "id, recipe_name, ingredients, instruction, difficulty_level, source_url"
+RECIPE_COLUMNS = (
+    "id, recipe_name, ingredients, instruction, difficulty_level, source_url, "
+    "cooking_time_minutes"
+)
 
 
 def list_recipes(db: Database, *, limit: int, offset: int) -> list[dict]:
@@ -44,8 +47,9 @@ def list_recipes_for_model(db: Database, *, limit: int | None = None) -> list[di
 def create_recipe(db: Database, data: dict) -> int:
     """Insert a recipe and return the generated id."""
     sql = """
-        INSERT INTO recipes (recipe_name, ingredients, instruction, difficulty_level)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO recipes
+            (recipe_name, ingredients, instruction, difficulty_level, cooking_time_minutes)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING id
     """
     params = (
@@ -53,6 +57,7 @@ def create_recipe(db: Database, data: dict) -> int:
         data["ingredients"],
         data["instructions"],
         data["difficulty_level"],
+        data["cooking_time_minutes"],
     )
     row = db.fetch_one(sql, params)
     return int(row["id"])
@@ -68,7 +73,8 @@ def update_recipe(db: Database, recipe_id: int, data: dict) -> bool:
     """Overwrite a recipe; ``False`` when the recipe does not exist."""
     sql = """
         UPDATE recipes
-        SET recipe_name = %s, ingredients = %s, instruction = %s, difficulty_level = %s
+        SET recipe_name = %s, ingredients = %s, instruction = %s, difficulty_level = %s,
+            cooking_time_minutes = %s
         WHERE id = %s
     """
     params = (
@@ -76,6 +82,7 @@ def update_recipe(db: Database, recipe_id: int, data: dict) -> bool:
         data["ingredients"],
         data["instructions"],
         data["difficulty_level"],
+        data["cooking_time_minutes"],
         recipe_id,
     )
     return db.execute(sql, params) > 0

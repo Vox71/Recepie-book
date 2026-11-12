@@ -3,13 +3,14 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **110 кейсов в 14 файлах**. 57 кейсов работают без базы (проверка входных
+**Состав набора:** **126 кейсов в 15 файлах**. 61 кейс работает без базы (проверка входных
 данных, работа с токеном, служебные адреса, сам контракт `openapi.yaml`, компоненты ML-модуля,
 словарь аллергенов и его метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета
-и CLI импорта), 53 — против реальной PostgreSQL (включая саму схему БД и тела ответов, сверенные
-со схемами контракта). На каждый адрес из
-`openapi.yaml` приходится 1–3 кейса; адресов теперь 22 — три из них про избранное
-(`/favorite_recipes`). Модуль рекомендаций по-прежнему включается флагом
+и CLI импорта), 65 — против реальной PostgreSQL (включая саму схему БД, тела ответов, сверенные
+со схемами контракта, и таймеры). На каждый адрес из
+`openapi.yaml` приходится 1–3 кейса; адресов теперь 25 — три из них про избранное
+(`/favorite_recipes`), три — про таймеры (`/timers`, `/timers/active`, `/timers/{id}`). Модуль
+рекомендаций по-прежнему включается флагом
 `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
 (`tests/test_smart_recommendations.py`), а импорт датасета и обучение модели — это CLI, а не
 новые маршруты.
@@ -18,9 +19,9 @@
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 57 passed, 53 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 61 passed, 65 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 110 passed
+                                 # с БД: 126 passed
 
 # покрытие (statement + branch) и порог 80 %, см. docs/test-coverage.md
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
@@ -38,7 +39,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 |---|---|---|---|---|
 | `tests/test_system.py` | 6 | 4 | 2 | служебные адреса, формат ошибок, лимит запросов (429) |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
-| `tests/test_recipes.py` | 9 | 0 | 9 | CRUD рецептов, пагинация списка, поля карточки рецепта |
+| `tests/test_recipes.py` | 10 | 0 | 10 | CRUD рецептов, пагинация списка, поля карточки рецепта, время приготовления |
 | `tests/test_favorites.py` | 4 | 0 | 4 | избранное: JWT, порядок, идемпотентность |
 | `tests/test_fridge.py` | 7 | 1 | 6 | холодильник, пагинация списка и удаление просроченного, сериализация `last_added` |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
@@ -49,17 +50,18 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
 | `tests/test_allergens.py` | 16 | 13 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients`, границы фильтра |
 | `tests/test_recommendation_model.py` | 9 | 8 | 1 | модель v1: веса IDF, артефакт, откат на заглушку, метрики ранжирования, CLI |
-| `tests/test_openapi_contract.py` | 17 | 14 | 3 | сам контракт: валидность по спецификации, маршруты и лимиты из файла, тела реальных ответов по схемам |
-| **Всего** | **110** | **57** | **53** | |
+| `tests/test_openapi_contract.py` | 21 | 17 | 4 | сам контракт: валидность по спецификации, маршруты и лимиты из файла, тела реальных ответов по схемам (включая таймеры) |
+| `tests/test_timers.py` | 11 | 1 | 10 | таймеры: время рецепта, дедлайн из базы, список активных, изоляция по токену, отмена, лимиты |
+| **Всего** | **126** | **61** | **65** | |
 
-Проверено 12.11.2026 на ветке `test/openapi-contract`: без БД — `57 passed, 53 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `110 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Покрытие того же прогона: **87,8 % строк**
-и **81,2 % ветвей** (порог 80 %, подробности — `docs/test-coverage.md`). Те же 110 кейсов повторяет
+Проверено 12.11.2026 на ветке `feat/recipe-timers`: без БД — `61 passed, 65 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `126 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Покрытие того же прогона: **88,6 % строк**
+и **82,6 % ветвей** (порог 80 %, подробности — `docs/test-coverage.md`). Те же 126 кейсов повторяет
 CI на PostgreSQL 15: там доступность базы контролируется отдельным шагом, поэтому набор не может
 «позеленеть» на одних пропусках.
 
-## Покрытие эндпоинтов: 22 адреса, 1–3 кейса на адрес
+## Покрытие эндпоинтов: 25 адресов, 1–3 кейса на адрес
 
 | Адрес | Кейсы | Что проверяется |
 |---|---|---|
@@ -85,6 +87,9 @@ CI на PostgreSQL 15: там доступность базы контролир
 | `DELETE /delete_expired` | `test_delete_expired_touches_only_the_user_from_the_token` | удаляются продукты только того пользователя, чей токен, по тому же правилу |
 | `GET /suggest_recipes` | `test_suggest_recipes_uses_the_expired_products` | подсказки по просроченным продуктам + запись в `generated_recipes` |
 | `GET /recommend_recipes` | `test_recommend_recipes_uses_the_fridge_and_skips_the_allergies` | рекомендации по холодильнику без аллергенов, история выдачи, пустой холодильник, аллергии из текстовой колонки |
+| `POST /timers` | `test_a_timer_is_created_from_the_recipe_time`, `test_a_recipe_without_cooking_time_requires_a_duration`, `test_timer_payloads_are_validated`, `test_a_timer_requires_an_existing_recipe` | 201 + дедлайн `started_at + duration` по часам базы; длительность из `cooking_time_minutes`; 400 на неверные тела и рецепт без времени; 404 на неизвестный рецепт |
+| `GET /timers/active` | `test_an_active_timer_survives_a_reload`, `test_an_expired_timer_is_closed_lazily`, `test_the_active_timers_are_ordered_and_capped` | список с `server_time` и `remaining_seconds`, порядок по дедлайну, истёкшие закрываются чтением, лимит 20 |
+| `DELETE /timers/{id}` | `test_cancel_removes_the_timer_from_active`, `test_timers_are_isolated_by_the_token` | 200 и исчезновение из активных; повторная отмена и чужой таймер → 404 |
 
 ## Что проверяет каждый файл
 
@@ -116,7 +121,7 @@ CI на PostgreSQL 15: там доступность базы контролир
 - [x] `test_protected_rejects_bad_tokens` — 401 в 6 вариантах: нет заголовка, не Bearer,
   пустой токен, не JWT, просроченный токен, токен без `sub`.
 
-### `tests/test_recipes.py` — 9 кейсов (все с БД)
+### `tests/test_recipes.py` — 10 кейсов (все с БД)
 
 - [x] `test_create_recipe_stores_it_under_the_database_column_names` — 201 и запись в колонки
   `recipe_name`, `ingredients`, `instruction`, `difficulty_level` (API-поля `name`/`instructions`
@@ -131,13 +136,17 @@ CI на PostgreSQL 15: там доступность базы контролир
   последний, `?offset=10` — пустой массив.
 - [x] `test_list_recipes_validates_the_pagination` — 400 на 7 значений (`limit=0`, `-1`, `abc`,
   `201`; `offset=-1`, `abc`, `1000001`) и 200 на граничном `limit=200&offset=0`.
-- [x] `test_get_recipe_by_id` — 200 с полным телом рецепта (все семь полей `Recipe`, у ручного
-  рецепта `ingredient_list` пуст и `source_url = null`); неизвестный id → 404.
+- [x] `test_get_recipe_by_id` — 200 с полным телом рецепта (все восемь полей `Recipe`, у ручного
+  рецепта `ingredient_list` пуст, `source_url` и `cooking_time_minutes` = `null`); неизвестный id → 404.
 - [x] `test_imported_recipe_exposes_the_source_and_the_ingredient_list` — рецепт «как из импортёра»
   (заполнен `source_url`, нет инструкции и сложности, строки `recipe_ingredients` вставлены не по
   порядку): ответ содержит ровно поля `Recipe`, `instructions`/`difficulty_level` = `null`,
   `source_url` = ссылка на источник, `ingredient_list` отсортирован по `sort_order` и сохраняет
   `quantity = null` у продукта без количества; та же структура приходит и в странице `GET /recipes`.
+- [x] `test_a_recipe_declares_its_cooking_time` — `cooking_time_minutes` необязательное поле
+  `RecipeInput`: с ним рецепт отдаёт значение и в списке, и в БД; без него — `null` (у импортированных
+  рецептов времени нет); 400 на `0`, `1441`, строку, `true` и дробное; `PUT` умеет и перезаписать,
+  и обнулить.
 - [x] `test_update_recipe` — 200, изменённые поля сохранены (остальные не потеряны);
   неполное тело → 400, неизвестный id → 404.
 - [x] `test_delete_recipe` — 200, рецепт исчез, список пуст; повторное удаление → 404.
@@ -178,6 +187,35 @@ CI на PostgreSQL 15: там доступность базы контролир
   фикстуру `add_relative_fridge_items`, то есть по тем же часам, что и правило): удаляются ровно
   два просроченных, «сегодня» и «завтра» остаются, дата «сегодня» совпадает с `CURRENT_DATE`;
   повторный `DELETE` → 0.
+
+### `tests/test_timers.py` — 11 кейсов (1 без БД)
+
+Спринт 3, задача 1: таймер в рецепте. Проверяется то, что можно проверить на сервере — дедлайн,
+изоляция по токену, состояния; точность отрисовки — свойство алгоритма из `docs/timer.md` §5.
+
+- [x] `test_a_timer_is_created_from_the_recipe_time` — без `duration_seconds` сервер берёт
+  `cooking_time_minutes × 60` (2 мин → 120 с); `label` по умолчанию — название рецепта; в ответе
+  ровно поля `Timer`; `ends_at − started_at = 120 с`; `server_time ≤ ends_at`.
+- [x] `test_a_recipe_without_cooking_time_requires_a_duration` — у рецепта без времени 400 с
+  текстом «has no cooking time»; с явными `duration_seconds` таймер создаётся.
+- [x] `test_a_timer_requires_an_existing_recipe` — нет `recipe_id` или он `0` → 400; неизвестный
+  рецепт → 404; тело не объект → 400; `label` обрезается по краям, явная длительность важнее
+  времени рецепта.
+- [x] `test_the_deadline_is_started_at_plus_duration` — в БД `ends_at − started_at = 90 с`,
+  `ends_at` ещё в будущем, `status = running`, `closed_at` пуст: время считает база, а не Python.
+- [x] `test_timers_are_isolated_by_the_token` — второй пользователь не видит чужой таймер и
+  получает 404 на его отмену; владелец по-прежнему видит свой.
+- [x] `test_an_active_timer_survives_a_reload` — повторный `GET /timers/active` отдаёт тот же
+  `ends_at` и `server_time` (точка отсчёта для восстановления), `remaining_seconds` не растёт.
+- [x] `test_an_expired_timer_is_closed_lazily` — после сдвига `ends_at` в прошлое список пуст,
+  в БД `status = finished` и `closed_at = ends_at` (а не «когда заметили»); отменить его уже нельзя.
+- [x] `test_cancel_removes_the_timer_from_active` — `DELETE` → 200, из активных исчез,
+  повторная отмена → 404, в БД `cancelled`.
+- [x] `test_the_active_timers_are_ordered_and_capped` — порядок по дедлайну (100, 200, 300 с);
+  после 20 активных 21-й → 400 «at most 20 timers can run at once».
+- [x] `test_timer_payloads_are_validated` — 400 на `duration_seconds` 0, 86401, `"10"`, `true`,
+  `label` из 101 символа и `recipe_id` строкой; граничные 86 400 с принимаются.
+- [x] `test_timers_require_a_token` — 401 на всех трёх адресах без токена.
 
 ### `tests/test_user_preferences.py` — 2 кейса (1 без БД)
 
@@ -331,7 +369,7 @@ CI на PostgreSQL 15: там доступность базы контролир
 Файл — «исполняемая» копия схемы `docs/db_scheme.png` (с расширениями из `docs/db_schema.md`)
 и проверка того, что не покрыто адресами.
 
-- [x] `test_tables_columns_and_primary_keys_match_the_diagram` — ровно 9 таблиц, у каждой
+- [x] `test_tables_columns_and_primary_keys_match_the_diagram` — ровно 10 таблиц, у каждой
   колонки тип и длина как на диаграмме, первичные ключи совпадают; `cuisine_type` отсутствует.
 - [x] `test_foreign_keys_and_the_email_index_match_the_diagram` — все внешние ключи и правила
   `ON DELETE` (`CASCADE`/`SET NULL`), уникальный индекс `lower(email)` (email без учёта регистра).
@@ -408,7 +446,7 @@ CI на PostgreSQL 15: там доступность базы контролир
   использование и завершается с кодом 0: документированная точка входа работает, а не только
   `app.importer.cli`.
 
-### `tests/test_openapi_contract.py` — 17 кейсов (14 без БД)
+### `tests/test_openapi_contract.py` — 21 кейс (17 без БД)
 
 Проверяет не поведение отдельного адреса, а сам контракт: файл, его соответствие коду и тела
 ответов. Единственный файл набора, который открывает `openapi.yaml`.
@@ -426,9 +464,10 @@ CI на PostgreSQL 15: там доступность базы контролир
 - [x] `test_the_pagination_limits_match_the_application_constants` — у `GET /recipes`,
   `GET /favorite_recipes`, `GET /fridge_items` схема `limit`/`offset` равна константам
   `app/validation.py` (1..200, по умолчанию 50; 0..1 000 000, по умолчанию 0).
-- [x] `test_failure_answers_match_the_error_schema` (8 параметров) — 401 без токена на `/protected`,
-  `/favorite_recipes`, `/notify_expired`; 400 на `?limit=0`, `?offset=abc`, неполный `/register`,
-  пустой `/login`, не-объект в `POST /recipes`; тело каждого — ровно `{"error": "..."}`.
+- [x] `test_failure_answers_match_the_error_schema` (11 параметров) — 401 без токена на `/protected`,
+  `/favorite_recipes`, `/notify_expired` и трёх адресах таймеров; 400 на `?limit=0`, `?offset=abc`,
+  неполный `/register`, пустой `/login`, не-объект в `POST /recipes`; тело каждого — ровно
+  `{"error": "..."}`.
 - [x] `test_the_system_answers_match_the_contract` — `GET /` (text/plain), `GET /health` (200),
   `GET /ready` (503 без базы) по схемам контракта.
 - [x] `test_authentication_and_recipe_answers_match_the_contract` — регистрация, вход, `/protected`
@@ -439,6 +478,10 @@ CI на PostgreSQL 15: там доступность базы контролир
 - [x] `test_an_imported_recipe_matches_the_contract` — рецепт из импортёра: три `nullable`-поля
   равны `null`, `ingredient_list` идёт по `sort_order`, `quantity` может быть `null` — и в карточке,
   и в странице списка.
+- [x] `test_timer_answers_match_the_contract` — таймеры (спринт 3, задача 1): `POST /timers`
+  (201, `ends_at` — `date-time` с offset и позже `started_at`), `GET /timers/active`,
+  `DELETE /timers/{id}` и документированный повторный 404; плюс 400 «у рецепта нет времени» и 404
+  на неизвестный рецепт.
 
 ## Примечания для отчётности
 
@@ -455,7 +498,7 @@ CI на PostgreSQL 15: там доступность базы контролир
   давали бы разный ответ около полуночи. Кейсы — `test_notify_expired_and_delete_expired_products_use_one_rule`
   и `test_delete_expired_products_uses_the_database_date_as_the_boundary`.
 - **Фикстуры** (`tests/conftest.py`): `app`/`client` — приложение без БД; `db_app`/`db_client`/`db`
-  — приложение с БД, фасад базы для SQL-проверок и очистка всех девяти таблиц перед каждым
+  — приложение с БД, фасад базы для SQL-проверок и очистка всех десяти таблиц перед каждым
   кейсом (`TRUNCATE ... RESTART IDENTITY CASCADE`); `register_user` и `add_fridge_items` —
   подготовка данных через настоящие HTTP-запросы; `add_relative_fridge_items` — продукты с датами
   относительно часов базы (`CURRENT_DATE + смещение`), чтобы проверять границу по тому же правилу;
@@ -475,8 +518,13 @@ CI на PostgreSQL 15: там доступность базы контролир
   методы с `app.url_map`, а лимиты `limit/offset` — с константами `app/validation.py`,
   (3) проверяет тела реальных ответов по схемам файла (`openapi-schema-validator` понимает
   `nullable`). Ручной список маршрутов, который раньше жил в `tests/test_system.py`, удалён.
-- **Результат последнего прогона** (12.11.2026, ветка `test/openapi-contract`): без БД —
-  `57 passed, 53 skipped` (exit 0), с PostgreSQL 15 в контейнере — `110 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний; покрытие того же прогона — 87,8 % строк и 81,2 %
-  ветвей (`docs/test-coverage.md`). Те же 110 кейсов повторяет CI-workflow `Backend CI`
+- **Результат последнего прогона** (12.11.2026, ветка `feat/recipe-timers`): без БД —
+  `61 passed, 65 skipped` (exit 0), с PostgreSQL 15 в контейнере — `126 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний; покрытие того же прогона — 88,6 % строк и 82,6 %
+  ветвей (`docs/test-coverage.md`). Те же 126 кейсов повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.
+- **Таймеры проверяются там, где это имеет смысл**: сервер отвечает за дедлайн (`ends_at`),
+  изоляцию по токену и состояния, поэтому тесты сравнивают `ends_at − started_at` и содержимое
+  таблицы. Точность отрисовки — свойство клиентского алгоритма (`docs/timer.md` §5): 250-мс шаг
+  перерисовки и остаток, посчитанный от пары «`ends_at` − `server_time`», поэтому отсчёт не
+  дрейфует; pytest-ом это не проверяется и не должно.

@@ -130,6 +130,8 @@ def test_get_recipe_by_id(db_client):
         # no source, so the structure is empty and source_url is null (task 5).
         "ingredient_list": [],
         "source_url": None,
+        # No cooking time was sent, so the timer default stays unknown (task 1).
+        "cooking_time_minutes": None,
     }
 
     unknown = db_client.get("/recipes/424242")
@@ -182,10 +184,12 @@ def test_imported_recipe_exposes_the_source_and_the_ingredient_list(db_client, d
         "instructions",
         "difficulty_level",
         "source_url",
+        "cooking_time_minutes",
     }
     assert recipe["source_url"] == source
     assert recipe["instructions"] is None
     assert recipe["difficulty_level"] is None
+    assert recipe["cooking_time_minutes"] is None
     assert recipe["ingredient_list"] == [
         {"name": "Лосось", "quantity": "400 г"},
         {"name": "Картофель", "quantity": "3 шт."},
@@ -195,6 +199,41 @@ def test_imported_recipe_exposes_the_source_and_the_ingredient_list(db_client, d
     assert [item["ingredient_list"] for item in db_client.get("/recipes").get_json()] == [
         recipe["ingredient_list"]
     ]
+
+
+def test_a_recipe_declares_its_cooking_time(db_client, db):
+    """``cooking_time_minutes`` is optional, validated 1..1440 and returned (task 1).
+
+    The value is the default duration of a timer (``POST /timers``), so it travels with
+    the recipe card and is stored in ``recipes.cooking_time_minutes``.
+    """
+    assert (
+        db_client.post("/recipes", json={**RECIPE, "cooking_time_minutes": 25}).status_code == 201
+    )
+    assert db_client.post("/recipes", json=SOUP).status_code == 201
+
+    recipes = {item["name"]: item for item in db_client.get("/recipes").get_json()}
+    assert recipes[RECIPE["name"]]["cooking_time_minutes"] == 25
+    # Absent in the body -> NULL: imported recipes have no time at all.
+    assert recipes[SOUP["name"]]["cooking_time_minutes"] is None
+    stored = db.fetch_one("SELECT cooking_time_minutes FROM recipes ORDER BY id")
+    assert stored["cooking_time_minutes"] == 25
+
+    for bad in (0, 1441, "25", True, 25.5):
+        response = db_client.post(
+            "/recipes", json={**RECIPE, "name": f"bad {bad}", "cooking_time_minutes": bad}
+        )
+        assert response.status_code == 400, bad
+
+    # PUT overwrites the value and also accepts null (the recipe goes back to "unknown").
+    recipe_id = recipes[RECIPE["name"]]["id"]
+    assert (
+        db_client.put(
+            f"/recipes/{recipe_id}", json={**RECIPE, "cooking_time_minutes": None}
+        ).status_code
+        == 200
+    )
+    assert db_client.get(f"/recipes/{recipe_id}").get_json()["cooking_time_minutes"] is None
 
 
 def test_update_recipe(db_client):
