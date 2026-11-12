@@ -121,6 +121,9 @@ def test_the_flag_on_ranks_the_favourites_and_the_fridge(
             "difficulty_level",
             "source_url",
             "cooking_time_minutes",
+            "servings",
+            "steps",
+            "nutrition",
         }
     # Everything that was offered is audited in generated_recipes.
     assert len(generated_model.list_generated(db, user_id)) == 3

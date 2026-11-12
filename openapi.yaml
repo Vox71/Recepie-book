@@ -878,6 +878,87 @@ components:
             Колонка recipe_ingredients.quantity_text (varchar(100)); null, если в
             источнике количество не указано (например, «соль» без граммовки).
 
+    RecipeStep:
+      type: object
+      description: >
+        Один шаг приготовления из recipe_steps (спринт 3, задача 2). Шаги пишет парсер
+        страницы povarenok.ru; у ручного рецепта их нет, поэтому массив steps пуст, а
+        текст остаётся в instructions.
+      required: [number, text, image_url]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: Номер шага в порядке источника (recipe_steps.step_number).
+        text:
+          type: string
+          maxLength: 2000
+          description: >
+            Текст шага (recipe_steps.text). Перенос строки внутри шага — это <br>
+            исходной страницы.
+        image_url:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Фото шага (recipe_steps.image_url); null, если автор его не добавил.
+
+    RecipeNutrition:
+      type: object
+      nullable: true
+      description: >
+        Пищевая ценность из recipe_nutrition (спринт 3, задача 2). Страница публикует две
+        группы: «Готового блюда» и «100 г блюда»; значения на порцию выводятся из
+        recipes.servings и не хранятся. null, если страницу ещё не разбирали или на ней нет
+        блока «Пищевая и энергетическая ценность» — поэтому сам объект объявлен nullable.
+      required: [calories_total, protein_total, fat_total, carbs_total, calories_per_100g,
+                 protein_per_100g, fat_per_100g, carbs_per_100g, source]
+      properties:
+        calories_total:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Ккал всего блюда.
+        protein_total:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Белки всего блюда, граммы.
+        fat_total:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Жиры всего блюда, граммы.
+        carbs_total:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Углеводы всего блюда, граммы.
+        calories_per_100g:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Ккал на 100 г блюда.
+        protein_per_100g:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Белки на 100 г блюда, граммы.
+        fat_per_100g:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Жиры на 100 г блюда, граммы.
+        carbs_per_100g:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Углеводы на 100 г блюда, граммы.
+        source:
+          type: string
+          maxLength: 32
+          description: Источник чисел (recipe_nutrition.source), сейчас всегда «povarenok».
+
     Recipe:
       type: object
       description: >
@@ -886,7 +967,7 @@ components:
         источника, а ручной рецепт не имеет source_url и строк recipe_ingredients.
       required:
         [id, name, ingredients, ingredient_list, instructions, difficulty_level, source_url,
-         cooking_time_minutes]
+         cooking_time_minutes, servings, steps, nutrition]
       properties:
         id:
           type: integer
@@ -938,8 +1019,26 @@ components:
           description: >
             Колонка recipes.cooking_time_minutes: сколько готовится блюдо, в минутах.
             Это время по умолчанию для POST /timers. null у рецептов, импортированных
-            из povarenok: в датасете времени нет, поэтому таймер для них запускают с
-            явным duration_seconds.
+            из povarenok и ещё не разобранных парсером страниц: в датасете времени нет, а
+            страница публикует его примерно у половины рецептов (docs/povarenok-pages.md).
+        servings:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
+          description: >
+            Колонка recipes.servings: на сколько порций рассчитан рецепт (микроразметка
+            recipeYield страницы). null у ручного рецепта и у страницы без этого поля.
+        steps:
+          type: array
+          description: >
+            Шаги приготовления из recipe_steps, по порядку (спринт 3, задача 2). Массив
+            пуст у ручного рецепта и у страницы, на которой шагов нет; текст тех же шагов
+            продублирован в instructions, чтобы старый клиент ничего не потерял.
+          items:
+            $ref: '#/components/schemas/RecipeStep'
+        nutrition:
+          $ref: '#/components/schemas/RecipeNutrition'
 
     RecipeInput:
       type: object

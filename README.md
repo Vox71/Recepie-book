@@ -23,7 +23,7 @@ backend/
 │   ├── embeddings.py  # эмбеддинги (ленивая загрузка, включаются EMBEDDINGS_ENABLED)
 │   ├── ml/            # ML-модуль: предобработка, векторизация, TF-IDF модель v1, KNN, аллергены, метрики
 │   ├── importer/      # импорт датасета povarenok: чтение, нормализация, CLI, скачивание
-│   ├── schema.sql     # DDL: 10 таблиц, индексы, 3 триггера (идемпотентный)
+│   ├── schema.sql     # DDL: 12 таблиц, индексы, 3 триггера (идемпотентный)
 │   ├── migrate.py     # миграции: python -m app.migrate + журнал schema_migrations
 │   ├── models/        # SQL-слой: по модулю на таблицу, только параметризованные запросы
 │   ├── services/      # бизнес-логика
@@ -56,14 +56,16 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
 
 ### Схема БД
 
-Структура соответствует `docs/db_scheme.png` (10 таблиц; подробное описание каждой колонки,
+Структура соответствует `docs/db_scheme.png` (12 таблиц; подробное описание каждой колонки,
 индекса и триггера — [docs/db_schema.md](docs/db_schema.md)):
 
 | Таблица | Назначение |
 |---|---|
 | `users` | пользователи: `username`, `password` (scrypt-хэш), `email`, `allergies`/`preferences` (термины через запятую) |
-| `recipes` | рецепты: `recipe_name`, `ingredients`, `instruction`, `difficulty_level`, `source_url` (ключ импорта), `cooking_time_minutes`, `created_at`/`updated_at` |
+| `recipes` | рецепты: `recipe_name`, `ingredients`, `instruction`, `difficulty_level`, `source_url` (ключ импорта), `cooking_time_minutes`, `servings`, `created_at`/`updated_at` |
 | `recipe_ingredients` | ингредиенты рецепта по строкам: `ingredient_name`, `quantity_text`, `sort_order` |
+| `recipe_steps` | шаги приготовления: `step_number`, `text`, `image_url` (со страницы рецепта) |
+| `recipe_nutrition` | КБЖУ рецепта: «всё блюдо» и «100 г блюда» |
 | `fridge_items` | продукты: `item_id` (ключ), `user_id`, `product_name`, `expiration_date`, `quantity`, `last_added` |
 | `favorite_recipes` | избранные рецепты пользователя (`created_at` — порядок выдачи) |
 | `timers` | таймеры приготовления: `recipe_id`, `label`, `duration_seconds`, `started_at`/`ends_at` (`timestamptz`), `status` |
@@ -82,7 +84,10 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
   `updated_at` обновляет триггер `recipes_updated_at_trigger`, а не код приложения;
 - `recipes.cooking_time_minutes` и таблица `timers` — таймер приготовления (спринт 3, задача 1):
   время рецепта в минутах и абсолютный дедлайн в `timestamptz`, чтобы отсчёт пережил перезагрузку,
-  второй web-процесс и смену часового пояса ([docs/timer.md](docs/timer.md)).
+  второй web-процесс и смену часового пояса ([docs/timer.md](docs/timer.md));
+- `recipes.servings`/`parsed_at`/`parser_version`, `recipe_steps` и `recipe_nutrition` — данные,
+  вытащенные со страницы рецепта (спринт 3, задача 2): шаги, время, порции и КБЖУ
+  ([docs/povarenok-pages.md](docs/povarenok-pages.md)).
 
 Осознанные отклонения от диаграммы (они же — комментарии в `app/schema.sql`):
 
@@ -132,6 +137,9 @@ python worker.py --interval-minutes 60  # цикл по расписанию
 | `difficulty_level` | сложность (`varchar(50)`) | да, у импортированных рецептов |
 | `source_url` | ссылка на источник и естественный ключ импорта (`varchar(255)`) | да, у рецептов, созданных через API |
 | `cooking_time_minutes` | время приготовления в минутах (1..1440) — время таймера по умолчанию (`POST /timers`) | да, у импортированных рецептов: в датасете времени нет |
+| `servings` | на сколько порций рассчитан рецепт (1..100) | да, если страница этого не публикует (~58 %) |
+| `steps` | шаги приготовления: `[{number, text, image_url}]` из `recipe_steps` | пустой массив у ручного рецепта и у страницы без шагов |
+| `nutrition` | КБЖУ: «всё блюдо» и «100 г», с пометкой источника | да, если страницу не разбирали или на ней нет этого блока |
 
 Почему так: в датасете povarenok нет ни инструкций, ни сложности, поэтому `POST /recipes`
 требует эти поля (ручной рецепт полный), а импортированный отдаёт `null` — иначе пришлось бы
@@ -193,6 +201,19 @@ python -m app.importer --download --destination data/povarenok   # скачат�
 python -m app.importer --dataset tests/data/povarenok_sample.json --dry-run
 python -m app.importer --dataset data/povarenok --limit 1000 --batch-size 1000
 ```
+
+Вторая ступень — данные со страниц рецептов (шаги, время, порции, КБЖУ). Подробно:
+[docs/povarenok-pages.md](docs/povarenok-pages.md).
+
+```bash
+python -m app.importer --url https://www.povarenok.ru/recipes/show/184919/   # одна страница, без БД
+python -m app.importer --enrich --limit 200 --delay 1.0                      # обогатить импортированные
+```
+
+Парсер читает schema.org-микроразметку (`itemprop`), а не CSS-классы, кэширует HTML в
+`backend/data/pages/` (gitignore) и потому второй прогон не ходит в сеть; `--force` переразбирает,
+`--refresh` перекачивает. Сайт получает не чаще одного запроса в секунду и под именем
+`RecepieBookBot/0.1`.
 
 | Что | Как устроено |
 |---|---|
@@ -304,20 +325,21 @@ python -m app.ml.allergen_eval --json   # то же машинно-читаем�
 команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
 
 
-Набор — 126 кейсов в 15 файлах: по 1–3 кейса на каждый из 25 адресов (успех + отказ), отдельный
+Набор — 151 кейс в 16 файлах: по 1–3 кейса на каждый из 25 адресов (успех + отказ), отдельный
 файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное,
-`tests/test_timers.py` про таймеры, четыре
+`tests/test_timers.py` про таймеры, `tests/test_importer_pages.py` про разбор страниц povarenok,
+четыре
 файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`,
 `test_recommendation_model.py`), `tests/test_importer_povarenok.py` про импорт датасета и
 `tests/test_openapi_contract.py`, который проверяет сам `openapi.yaml`: валидность файла, совпадение
 адресов и лимитов с кодом и тела реальных ответов по схемам.
-61 кейс идёт без базы, 65 — против PostgreSQL.
+80 кейсов идут без базы, 71 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 61 passed, 65 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 80 passed, 71 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 126 passed
+                                # с БД: 151 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 
@@ -326,13 +348,13 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
   coverage run -m pytest && coverage report
 ```
 
-Полный прогон против реальной базы (`126 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`151 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 ### Покрытие тестами
 
-Измерено `coverage.py` на полном наборе с PostgreSQL: **88,6 % строк** (2166 из 2445) и
-**82,6 % ветвей** (729 из 883), комбинированное покрытие — 87,0 %. Порог 80 % записан в
+Измерено `coverage.py` на полном наборе с PostgreSQL: **88,7 % строк** (2572 из 2900) и
+**82,5 % ветвей** (880 из 1067), комбинированное покрытие — 87,0 %. Порог 80 % записан в
 `backend/pyproject.toml` (`[tool.coverage.report] fail_under`) и проверяется в CI, поэтому
 просадка покрытия ломает сборку.
 

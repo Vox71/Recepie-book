@@ -8,7 +8,7 @@ from ..db import Database
 
 RECIPE_COLUMNS = (
     "id, recipe_name, ingredients, instruction, difficulty_level, source_url, "
-    "cooking_time_minutes"
+    "cooking_time_minutes, servings"
 )
 
 
@@ -143,4 +143,53 @@ def list_ingredient_names(db: Database, recipe_ids: Sequence[int]) -> dict[int, 
     return {
         recipe_id: [str(item["name"]) for item in items]
         for recipe_id, items in list_ingredient_details(db, recipe_ids).items()
+    }
+
+
+def list_steps(db: Database, recipe_ids: Sequence[int]) -> dict[int, list[dict]]:
+    """Return the steps of ``recipe_ids``, keyed by recipe id, in their source order.
+
+    One query per page of recipes, never one per recipe: the same rule the ingredient list
+    follows (``app/services/recipe_presenter.py``).  Recipes that were never parsed simply
+    have no key here.
+    """
+    sql = """
+        SELECT recipe_id, step_number, text, image_url
+        FROM recipe_steps
+        WHERE recipe_id = ANY(%s)
+        ORDER BY recipe_id, step_number
+    """
+    details: dict[int, list[dict]] = {}
+    for row in db.fetch_all(sql, (list(recipe_ids),)):
+        details.setdefault(int(row["recipe_id"]), []).append(
+            {
+                "number": int(row["step_number"]),
+                "text": str(row["text"]),
+                "image_url": row["image_url"],
+            }
+        )
+    return details
+
+
+def list_nutrition(db: Database, recipe_ids: Sequence[int]) -> dict[int, dict]:
+    """Return the nutrition of ``recipe_ids``, keyed by recipe id (one query per page)."""
+    sql = """
+        SELECT recipe_id, calories_total, protein_total, fat_total, carbs_total,
+               calories_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source
+        FROM recipe_nutrition
+        WHERE recipe_id = ANY(%s)
+    """
+    return {
+        int(row["recipe_id"]): {
+            "calories_total": row["calories_total"],
+            "protein_total": row["protein_total"],
+            "fat_total": row["fat_total"],
+            "carbs_total": row["carbs_total"],
+            "calories_per_100g": row["calories_per_100g"],
+            "protein_per_100g": row["protein_per_100g"],
+            "fat_per_100g": row["fat_per_100g"],
+            "carbs_per_100g": row["carbs_per_100g"],
+            "source": row["source"],
+        }
+        for row in db.fetch_all(sql, (list(recipe_ids),))
     }

@@ -30,6 +30,8 @@ EXPECTED_TABLES = frozenset(
         "users",
         "recipes",
         "recipe_ingredients",
+        "recipe_steps",
+        "recipe_nutrition",
         "fridge_items",
         "favorite_recipes",
         "generated_recipes",
@@ -60,8 +62,32 @@ EXPECTED_COLUMNS = {
         "source_url": ("character varying", 255),
         # Sprint 3, task 1: the default duration of a timer; NULL for imported recipes.
         "cooking_time_minutes": ("integer", None),
+        # Sprint 3, task 2: what the page parser found and when.
+        "servings": ("integer", None),
+        "parsed_at": ("timestamp with time zone", None),
+        "parser_version": ("character varying", 20),
         "created_at": ("timestamp without time zone", None),
         "updated_at": ("timestamp without time zone", None),
+    },
+    "recipe_steps": {
+        "id": ("integer", None),
+        "recipe_id": ("integer", None),
+        "step_number": ("integer", None),
+        "text": ("text", None),
+        "image_url": ("character varying", 255),
+    },
+    "recipe_nutrition": {
+        "recipe_id": ("integer", None),
+        "calories_total": ("numeric", None),
+        "protein_total": ("numeric", None),
+        "fat_total": ("numeric", None),
+        "carbs_total": ("numeric", None),
+        "calories_per_100g": ("numeric", None),
+        "protein_per_100g": ("numeric", None),
+        "fat_per_100g": ("numeric", None),
+        "carbs_per_100g": ("numeric", None),
+        "source": ("character varying", 32),
+        "parsed_at": ("timestamp with time zone", None),
     },
     "timers": {
         "id": ("integer", None),
@@ -140,6 +166,8 @@ EXPECTED_PRIMARY_KEYS = {
     "fridge_item_versions": {"id"},
     "fridge_item_audit": {"id"},
     "timers": {"id"},
+    "recipe_steps": {"id"},
+    "recipe_nutrition": {"recipe_id"},
 }
 # (child table, child column) -> (parent table, parent column, ON DELETE rule)
 EXPECTED_FOREIGN_KEYS = {
@@ -154,6 +182,8 @@ EXPECTED_FOREIGN_KEYS = {
     ("fridge_item_audit", "user_id"): ("users", "id", "CASCADE"),
     ("timers", "user_id"): ("users", "id", "CASCADE"),
     ("timers", "recipe_id"): ("recipes", "id", "CASCADE"),
+    ("recipe_steps", "recipe_id"): ("recipes", "id", "CASCADE"),
+    ("recipe_nutrition", "recipe_id"): ("recipes", "id", "CASCADE"),
 }
 
 PRIMARY_KEY_SQL = """

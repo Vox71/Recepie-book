@@ -4,6 +4,8 @@
 --   users                    user accounts
 --   recipes                  recipes (manual ones and imported ones)
 --   recipe_ingredients       normalized ingredient lists of a recipe
+--   recipe_steps             step-by-step instructions parsed from the source page
+--   recipe_nutrition         calories/macros of a recipe parsed from the source page
 --   fridge_items             fridge contents
 --   favorite_recipes         favourite recipes of a user
 --   timers                   running timers of a recipe (sprint 3, task 1)
@@ -55,6 +57,13 @@ CREATE TABLE IF NOT EXISTS recipes (
     -- povarenok dataset has no time at all - so the client asks for the duration
     -- explicitly for them.
     cooking_time_minutes integer   CHECK (cooking_time_minutes BETWEEN 1 AND 1440),
+    -- How many portions the recipe yields (the page publishes it for about half of the
+    -- recipes).  It is what user story 6 recalculates ingredients by.
+    servings         integer      CHECK (servings BETWEEN 1 AND 100),
+    -- Enrichment by the page parser (sprint 3, task 2): parsed_at IS NULL means "the
+    -- recipe page was never parsed"; parser_version lets a new parser re-run by version.
+    parsed_at        timestamptz,
+    parser_version   varchar(20),
     created_at       timestamp    NOT NULL DEFAULT current_timestamp,
     -- Maintained by the recipes_updated_at_trigger below, so every writer
     -- (API, parser, psql shell) leaves the same value.
@@ -84,6 +93,44 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
 -- Ingredient lookups in the other direction: "which recipes contain milk?" is the
 -- query behind allergen filtering (docs/db_schema.md).
 CREATE INDEX IF NOT EXISTS recipe_ingredients_name_idx ON recipe_ingredients (ingredient_name);
+
+-- Steps of a recipe, one row per step, as parsed from the source page (sprint 3, task 2).
+-- recipes.instruction keeps the same steps as numbered text, so older clients keep
+-- working; the rows below are what user story 6 ("ingredients on every step") and the
+-- planned step timers build on.  A manual recipe has no rows here.
+CREATE TABLE IF NOT EXISTS recipe_steps (
+    id          serial       PRIMARY KEY,
+    recipe_id   integer      NOT NULL REFERENCES recipes (id) ON DELETE CASCADE,
+    -- Position in the source list (1-based), restored as-is.
+    step_number integer      NOT NULL CHECK (step_number > 0),
+    -- Plain text of one step; a <br> of the source becomes a newline.
+    text        text         NOT NULL,
+    -- Photo of the step; NULL when the author added none.
+    image_url   varchar(255),
+    -- One number once per recipe; the index also serves recipe_id lookups.
+    CONSTRAINT recipe_steps_recipe_number_key UNIQUE (recipe_id, step_number)
+);
+
+CREATE INDEX IF NOT EXISTS recipe_steps_recipe_idx ON recipe_steps (recipe_id, step_number);
+
+-- Nutrition of a recipe, at most one row per recipe, parsed from the source page.
+-- The page publishes two groups ("Готового блюда" and "100 г блюда"); per-serving values
+-- are derivable from recipes.servings, so they are not stored (docs/povarenok-pages.md).
+CREATE TABLE IF NOT EXISTS recipe_nutrition (
+    recipe_id          integer        PRIMARY KEY
+                       REFERENCES recipes (id) ON DELETE CASCADE,
+    calories_total     numeric(10, 2) CHECK (calories_total >= 0),
+    protein_total      numeric(10, 2) CHECK (protein_total >= 0),
+    fat_total          numeric(10, 2) CHECK (fat_total >= 0),
+    carbs_total        numeric(10, 2) CHECK (carbs_total >= 0),
+    calories_per_100g  numeric(10, 2) CHECK (calories_per_100g >= 0),
+    protein_per_100g   numeric(10, 2) CHECK (protein_per_100g >= 0),
+    fat_per_100g       numeric(10, 2) CHECK (fat_per_100g >= 0),
+    carbs_per_100g     numeric(10, 2) CHECK (carbs_per_100g >= 0),
+    -- Where the numbers come from: 'povarenok' today.
+    source             varchar(32)    NOT NULL DEFAULT 'povarenok',
+    parsed_at          timestamptz    NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS fridge_items (
     item_id         serial       PRIMARY KEY,
