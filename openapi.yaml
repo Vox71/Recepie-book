@@ -5,9 +5,13 @@ info:
   description: >
     API Flask-приложения для рецептов, холодильника, аллергий/предпочтений,
     JWT-авторизации и уведомлений о просроченных продуктах.
-  servers:
-  - url: http://localhost:${BACKEND_PORT:-8000}
-    description: Backend (Docker)
+servers:
+  - url: http://localhost:{BACKEND_PORT}
+    description: Backend (Docker, порт публикуется переменной BACKEND_PORT)
+    variables:
+      BACKEND_PORT:
+        default: "8000"
+        description: Порт, на который docker-compose публикует backend.
 tags:
   - name: System
   - name: Auth
@@ -156,6 +160,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Тело не объект или user_id отсутствует/не является целым числом
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /recipes:
     get:
@@ -219,6 +229,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: >-
+            Тело не объект или обязательное поле отсутствует/не строка/длиннее
+            допустимого (name — 200 символов, ingredients — 10000, instructions —
+            10000, difficulty_level — 50).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /recipes/{id}:
     parameters:
@@ -262,6 +281,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Тело не объект или обязательное поле отсутствует/не строка/длиннее допустимого
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Рецепт с таким id не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
     delete:
       tags: [Recipes]
@@ -273,6 +304,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
+        '404':
+          description: Рецепт с таким id не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /favorite_recipes:
     get:
@@ -425,7 +462,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: '#/components/schemas/NotifyExpiredResponse'
                   - $ref: '#/components/schemas/MessageResponse'
         '401':
@@ -471,7 +508,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: '#/components/schemas/SuggestRecipesResponse'
                   - $ref: '#/components/schemas/MessageResponse'
         '401':
@@ -543,6 +580,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: >-
+            Тело не массив, обязательное поле отсутствует или неверного типа,
+            expiration_date не ISO-дата, quantity < 1 или product_name длиннее 100.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /delete_expired_products:
     delete:
@@ -591,18 +636,21 @@ components:
   schemas:
     Error:
       type: object
+      required: [error]
       properties:
         error:
           type: string
 
     MessageResponse:
       type: object
+      required: [message]
       properties:
         message:
           type: string
 
     HealthResponse:
       type: object
+      required: [status]
       properties:
         status:
           type: string
@@ -610,6 +658,7 @@ components:
 
     ReadyResponse:
       type: object
+      required: [status, database]
       properties:
         status:
           type: string
@@ -646,6 +695,7 @@ components:
 
     RegisterResponse:
       type: object
+      required: [message, user_id]
       properties:
         message:
           type: string
@@ -665,6 +715,7 @@ components:
 
     LoginResponse:
       type: object
+      required: [token]
       properties:
         token:
           type: string
@@ -672,6 +723,7 @@ components:
 
     ProtectedResponse:
       type: object
+      required: [message, user_id]
       properties:
         message:
           type: string
@@ -790,6 +842,7 @@ components:
 
     FridgeItem:
       type: object
+      required: [id, user_id, product_name, expiration_date, quantity, last_added]
       properties:
         id:
           type: integer
@@ -825,6 +878,7 @@ components:
 
     NotifyExpiredResponse:
       type: object
+      required: [message, expired_products]
       properties:
         message:
           type: string
@@ -843,12 +897,14 @@ components:
 
     DeleteExpiredResponse:
       type: object
+      required: [message]
       properties:
         message:
           type: string
 
     SuggestRecipesResponse:
       type: object
+      required: [message, recipes]
       properties:
         message:
           type: string
@@ -859,6 +915,7 @@ components:
 
     RecommendRecipesResponse:
       type: object
+      required: [message, recipes]
       properties:
         message:
           type: string

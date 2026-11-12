@@ -7,7 +7,7 @@ declares ISO 8601 strings and the API field names (``name``, ``instructions``, `
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Sequence
 
 
@@ -17,8 +17,18 @@ def iso_date(value: date | None) -> str | None:
 
 
 def iso_datetime(value: datetime | None) -> str | None:
-    """Serialize a ``datetime`` in ISO 8601 (with offset when available)."""
-    return value.isoformat() if value is not None else None
+    """Serialize a ``datetime`` in ISO 8601, always with an offset.
+
+    ``openapi.yaml`` declares ``format: date-time``, which is RFC 3339 and therefore
+    requires the offset.  ``fridge_items.last_added`` is a ``timestamp`` (without time
+    zone) filled by ``current_timestamp``, so a naive value is taken as UTC instead of
+    being sent without a zone - otherwise a strict client validator rejects the answer.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
 
 
 def as_int(value: Any) -> int | None:

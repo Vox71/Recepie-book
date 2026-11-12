@@ -7,9 +7,37 @@ rules enforced here are input validation, SQL parameterisation and the shared
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+
+from app.serializers import iso_date, iso_datetime, serialize_fridge_item
 
 TOMORROW = date.today() + timedelta(days=1)
+
+
+def test_serializers_render_missing_values_and_keep_the_utc_offset():
+    """``FridgeItem`` fields: ``null`` stays ``null``, a naked timestamp becomes RFC 3339.
+
+    ``fridge_items.last_added`` is a ``timestamp`` without a time zone, while
+    ``openapi.yaml`` declares ``format: date-time``: the serializer adds the UTC offset,
+    otherwise a strict client validator rejects the answer (checked by
+    ``test_openapi_contract.py``).
+    """
+    item = serialize_fridge_item(
+        {
+            "item_id": 1,
+            "user_id": 2,
+            "product_name": "Молоко",
+            "expiration_date": None,
+            "quantity": None,
+            "last_added": datetime(2026, 11, 12, 10, 30),
+        }
+    )
+
+    assert item["expiration_date"] is None
+    assert item["quantity"] is None
+    assert item["last_added"] == "2026-11-12T10:30:00+00:00"
+    assert iso_date(None) is None
+    assert iso_datetime(None) is None
 
 
 def test_add_and_list_fridge_items(db_client, register_user, db):
