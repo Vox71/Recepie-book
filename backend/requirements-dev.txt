@@ -6,3 +6,12 @@ pytest==8.2.2
 coverage==7.5.3
 black==24.4.2
 ruff==0.4.10
+
+# Contract tests (tests/test_openapi_contract.py): the file itself is validated,
+# the route table is read from it, and real responses are checked against its schemas.
+# openapi-schema-validator understands OpenAPI `nullable`; PyYAML and jsonschema come
+# with it, but they are pinned explicitly so a wheel change cannot alter the result.
+PyYAML==6.0.1
+jsonschema==4.22.0
+openapi-schema-validator==0.6.3
+openapi-spec-validator==0.7.1

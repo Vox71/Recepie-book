@@ -3,10 +3,11 @@
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
 (`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
 
-**Состав набора:** **93 кейса в 13 файлах**. 43 кейса работают без базы (проверка входных
-данных, работа с токеном, служебные адреса, компоненты ML-модуля, словарь аллергенов и его
-метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета и CLI импорта), 50 —
-против реальной PostgreSQL (включая саму схему БД). На каждый адрес из
+**Состав набора:** **110 кейсов в 14 файлах**. 57 кейсов работают без базы (проверка входных
+данных, работа с токеном, служебные адреса, сам контракт `openapi.yaml`, компоненты ML-модуля,
+словарь аллергенов и его метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета
+и CLI импорта), 53 — против реальной PostgreSQL (включая саму схему БД и тела ответов, сверенные
+со схемами контракта). На каждый адрес из
 `openapi.yaml` приходится 1–3 кейса; адресов теперь 22 — три из них про избранное
 (`/favorite_recipes`). Модуль рекомендаций по-прежнему включается флагом
 `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
@@ -17,9 +18,9 @@
 
 ```bash
 cd backend
-python -m pytest                 # без БД: 43 passed, 50 skipped (DB-кейсы скипаются)
+python -m pytest                 # без БД: 57 passed, 53 skipped (DB-кейсы скипаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                 # с БД: 93 passed
+                                 # с БД: 110 passed
 
 # покрытие (statement + branch) и порог 80 %, см. docs/test-coverage.md
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
@@ -35,11 +36,11 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 
 | Файл | Кейсов | Без БД | С БД | Тема |
 |---|---|---|---|---|
-| `tests/test_system.py` | 7 | 6 | 1 | служебные адреса, список маршрутов, формат ошибок, лимит запросов (429) |
+| `tests/test_system.py` | 6 | 4 | 2 | служебные адреса, формат ошибок, лимит запросов (429) |
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
 | `tests/test_recipes.py` | 9 | 0 | 9 | CRUD рецептов, пагинация списка, поля карточки рецепта |
 | `tests/test_favorites.py` | 4 | 0 | 4 | избранное: JWT, порядок, идемпотентность |
-| `tests/test_fridge.py` | 6 | 0 | 6 | холодильник, пагинация списка и удаление просроченного |
+| `tests/test_fridge.py` | 7 | 1 | 6 | холодильник, пагинация списка и удаление просроченного, сериализация `last_added` |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 6 | 1 | 5 | уведомления и рекомендации |
 | `tests/test_database.py` | 11 | 0 | 11 | схема БД, ограничения, триггеры, таблицы без адресов |
@@ -48,12 +49,13 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
 | `tests/test_allergens.py` | 16 | 13 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients`, границы фильтра |
 | `tests/test_recommendation_model.py` | 9 | 8 | 1 | модель v1: веса IDF, артефакт, откат на заглушку, метрики ранжирования, CLI |
-| **Всего** | **93** | **43** | **50** | |
+| `tests/test_openapi_contract.py` | 17 | 14 | 3 | сам контракт: валидность по спецификации, маршруты и лимиты из файла, тела реальных ответов по схемам |
+| **Всего** | **110** | **57** | **53** | |
 
-Проверено 29.10.2026 на ветке `feat/test-coverage-gost`: без БД — `43 passed, 50 skipped`
-(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `93 passed, 0 skipped` (exit 0);
-`ruff check .` и `black --check .` — без замечаний. Покрытие того же прогона: **87,7 % строк**
-и **81,1 % ветвей** (порог 80 %, подробности — `docs/test-coverage.md`). Те же 93 кейса повторяет
+Проверено 12.11.2026 на ветке `test/openapi-contract`: без БД — `57 passed, 53 skipped`
+(exit 0); с реальной PostgreSQL 15 (контейнер Docker) — `110 passed, 0 skipped` (exit 0);
+`ruff check .` и `black --check .` — без замечаний. Покрытие того же прогона: **87,8 % строк**
+и **81,2 % ветвей** (порог 80 %, подробности — `docs/test-coverage.md`). Те же 110 кейсов повторяет
 CI на PostgreSQL 15: там доступность базы контролируется отдельным шагом, поэтому набор не может
 «позеленеть» на одних пропусках.
 
@@ -86,14 +88,12 @@ CI на PostgreSQL 15: там доступность базы контролир
 
 ## Что проверяет каждый файл
 
-### `tests/test_system.py` — 7 кейсов (6 без БД)
+### `tests/test_system.py` — 6 кейсов (4 без БД)
 
 - [x] `test_index_returns_the_greeting` — `GET /` → 200, `text/plain`, точный текст приветствия.
 - [x] `test_health_is_ok_without_a_database` — liveness-проба работает без базы (200).
 - [x] `test_ready_reports_a_missing_database` — readiness-проба без базы → 503 `{"database":"unavailable"}`.
 - [x] `test_ready_reports_a_healthy_database` — с базой → 200 `{"database":"ok"}`.
-- [x] `test_registered_routes_match_the_contract` — в приложении зарегистрированы ровно 22 адреса
-  и их HTTP-методы из `openapi.yaml` (плюс `/health` и `/ready`); лишних и забытых маршрутов нет.
 - [x] `test_unknown_address_and_method_return_an_error_object` — 404 и 405 отдают единый
   формат ошибки `{"error": "..."}`.
 - [x] `test_rate_limit_blocks_the_third_registration` (БД) — с `RATE_LIMIT_ENABLED=true` и
@@ -155,8 +155,12 @@ CI на PostgreSQL 15: там доступность базы контролир
   нет, `0`, `-1`, строка, дробное, `true`, тело-массив), 404 на неизвестный рецепт, 400 на
   `limit=0` и `offset=abc`, 200 на `limit=200`.
 
-### `tests/test_fridge.py` — 6 кейсов (все с БД)
+### `tests/test_fridge.py` — 7 кейсов (1 без БД)
 
+- [x] `test_serializers_render_missing_values_and_keep_the_utc_offset` — `serialize_fridge_item`:
+  `NULL`-дата и `NULL`-количество остаются `null`, «голая» метка времени
+  (`timestamp` без зоны) выходит как `2026-11-12T10:30:00+00:00` — так выполняется
+  `format: date-time` контракта; `iso_date(None)` и `iso_datetime(None)` дают `None`.
 - [x] `test_add_and_list_fridge_items` — 201 и сообщение `N fridge item(s) added`; в списке
   корректные поля, `id` ответа совпадает с `fridge_items.item_id`, `quantity` — целое.
 - [x] `test_list_fridge_items_returns_one_page` — три продукта: без параметров приходят все
@@ -404,6 +408,38 @@ CI на PostgreSQL 15: там доступность базы контролир
   использование и завершается с кодом 0: документированная точка входа работает, а не только
   `app.importer.cli`.
 
+### `tests/test_openapi_contract.py` — 17 кейсов (14 без БД)
+
+Проверяет не поведение отдельного адреса, а сам контракт: файл, его соответствие коду и тела
+ответов. Единственный файл набора, который открывает `openapi.yaml`.
+
+- [x] `test_the_contract_is_a_valid_openapi_document` — `openapi-spec-validator` принимает файл;
+  версия 3.0.x, `info.title`/`info.version` на месте, `servers` объявлен **в корне** документа
+  (вложенный в `info` делал контракт невалидным, а Swagger UI — без адреса), у каждой переменной
+  в `url` есть описание в `variables`.
+- [x] `test_every_operation_documents_a_success_answer` — у каждой операции есть 2xx-ответ.
+- [x] `test_every_token_protected_operation_documents_401` — где объявлен `security: bearerAuth`,
+  там описан и 401 (проверка не вырождается: кейс падает, если защищённых операций не осталось).
+- [x] `test_the_contract_describes_exactly_the_routes_of_the_application` — адреса и методы из
+  файла совпадают с `app.url_map` в обе стороны (`/health` и `/ready` описаны в контракте, служебный
+  `/static` исключён): недокументированный маршрут и «документированный, но забытый» падают отдельно.
+- [x] `test_the_pagination_limits_match_the_application_constants` — у `GET /recipes`,
+  `GET /favorite_recipes`, `GET /fridge_items` схема `limit`/`offset` равна константам
+  `app/validation.py` (1..200, по умолчанию 50; 0..1 000 000, по умолчанию 0).
+- [x] `test_failure_answers_match_the_error_schema` (8 параметров) — 401 без токена на `/protected`,
+  `/favorite_recipes`, `/notify_expired`; 400 на `?limit=0`, `?offset=abc`, неполный `/register`,
+  пустой `/login`, не-объект в `POST /recipes`; тело каждого — ровно `{"error": "..."}`.
+- [x] `test_the_system_answers_match_the_contract` — `GET /` (text/plain), `GET /health` (200),
+  `GET /ready` (503 без базы) по схемам контракта.
+- [x] `test_authentication_and_recipe_answers_match_the_contract` — регистрация, вход, `/protected`
+  и весь CRUD рецепта, включая документированный 404 после удаления.
+- [x] `test_favorites_fridge_and_notification_answers_match_the_contract` — избранное (добавление,
+  страница, удаление), холодильник (список и добавление), `/notify_expired`, `/suggest_recipes`,
+  `/recommend_recipes`, `/user_preferences`, `/delete_expired`, `/delete_expired_products`.
+- [x] `test_an_imported_recipe_matches_the_contract` — рецепт из импортёра: три `nullable`-поля
+  равны `null`, `ingredient_list` идёт по `sort_order`, `quantity` может быть `null` — и в карточке,
+  и в странице списка.
+
 ## Примечания для отчётности
 
 - **Осознанные отклонения от CONTRIBUTION.md, зафиксированные тестами** (поведение задано
@@ -434,8 +470,13 @@ CI на PostgreSQL 15: там доступность базы контролир
   на адрес и один «плохой». Множество проверок внутри одного кейса (например, 10 некорректных
   тел в `test_add_fridge_items_validates_the_payload`) оформлено обычным циклом `for`, поэтому
   тестовых функций мало, а падение всё равно указывает на конкретное тело через `assert ..., payload`.
-- **Результат последнего прогона** (29.10.2026, ветка `feat/test-coverage-gost`): без БД —
-  `43 passed, 50 skipped` (exit 0), с PostgreSQL 15 в контейнере — `93 passed, 0 skipped`
-  (exit 0), `ruff`/`black` — без замечаний; покрытие того же прогона — 87,7 % строк и 81,1 %
-  ветвей (`docs/test-coverage.md`). Те же 93 кейса повторяет CI-workflow `Backend CI`
+- **Контракт проверяется сам, а не пересказывается**: `tests/test_openapi_contract.py` читает
+  `openapi.yaml` и (1) валидирует файл по спецификации OpenAPI 3.0, (2) сравнивает его адреса и
+  методы с `app.url_map`, а лимиты `limit/offset` — с константами `app/validation.py`,
+  (3) проверяет тела реальных ответов по схемам файла (`openapi-schema-validator` понимает
+  `nullable`). Ручной список маршрутов, который раньше жил в `tests/test_system.py`, удалён.
+- **Результат последнего прогона** (12.11.2026, ветка `test/openapi-contract`): без БД —
+  `57 passed, 53 skipped` (exit 0), с PostgreSQL 15 в контейнере — `110 passed, 0 skipped`
+  (exit 0), `ruff`/`black` — без замечаний; покрытие того же прогона — 87,8 % строк и 81,2 %
+  ветвей (`docs/test-coverage.md`). Те же 110 кейсов повторяет CI-workflow `Backend CI`
   на PostgreSQL 15.

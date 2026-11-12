@@ -3,7 +3,9 @@
 
 ## Бэкенд (Flask + PostgreSQL)
 
-Реализация полностью соответствует контракту `openapi.yaml` (Swagger — источник истины).
+Реализация соответствует контракту `openapi.yaml` (Swagger — источник истины), и это проверяется
+тестами: файл валидируется по спецификации, его адреса и лимиты сверяются с кодом, а тела реальных
+ответов — со схемами (`backend/tests/test_openapi_contract.py`).
 
 ```
 backend/
@@ -273,17 +275,19 @@ python -m app.ml.allergen_eval --json   # то же машинно-читаем�
 команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
 
 
-Набор — 93 кейса в 13 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
+Набор — 110 кейсов в 14 файлах: по 1–3 кейса на каждый из 22 адресов (успех + отказ), отдельный
 файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное, четыре
 файла про ML-модуль (`test_ml_engine.py`, `test_smart_recommendations.py`, `test_allergens.py`,
-`test_recommendation_model.py`) и `tests/test_importer_povarenok.py` про импорт датасета.
-43 кейса идут без базы, 50 — против PostgreSQL.
+`test_recommendation_model.py`), `tests/test_importer_povarenok.py` про импорт датасета и
+`tests/test_openapi_contract.py`, который проверяет сам `openapi.yaml`: валидность файла, совпадение
+адресов и лимитов с кодом и тела реальных ответов по схемам.
+57 кейсов идут без базы, 53 — против PostgreSQL.
 
 ```bash
 cd backend
-python -m pytest                # без БД: 43 passed, 50 skipped (DB-кейсы пропускаются)
+python -m pytest                # без БД: 57 passed, 53 skipped (DB-кейсы пропускаются)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase python -m pytest
-                                # с БД: 93 passed
+                                # с БД: 110 passed
 ruff check app main.py worker.py tests
 black --check app main.py worker.py tests
 
@@ -292,13 +296,13 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
   coverage run -m pytest && coverage report
 ```
 
-Полный прогон против реальной базы (`93 passed, 0 skipped`) проверен на этом коде локально
+Полный прогон против реальной базы (`110 passed, 0 skipped`) проверен на этом коде локально
 (PostgreSQL 15 в контейнере) и в CI на PostgreSQL 15.
 
 ### Покрытие тестами
 
-Измерено `coverage.py` на полном наборе с PostgreSQL: **87,7 % строк** (2055 из 2342) и
-**81,1 % ветвей** (684 из 843), комбинированное покрытие — 86,0 %. Порог 80 % записан в
+Измерено `coverage.py` на полном наборе с PostgreSQL: **87,8 % строк** (2060 из 2346) и
+**81,2 % ветвей** (688 из 847), комбинированное покрытие — 86,1 %. Порог 80 % записан в
 `backend/pyproject.toml` (`[tool.coverage.report] fail_under`) и проверяется в CI, поэтому
 просадка покрытия ломает сборку.
 

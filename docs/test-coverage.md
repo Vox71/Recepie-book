@@ -5,21 +5,21 @@
 ГОСТ 34.603-92, ГОСТ 19.301-79, ГОСТ Р ИСО/МЭК 25010-2015). Он дополняет `TEST-CHECKLIST.md`
 (что именно проверяет каждый кейс) и `TASKS-REPORT.md` (что сделано по задачам).
 
-Все числа ниже **измерены**, а не взяты из головы: прогон 29.10.2026 на ветке
-`feat/test-coverage-gost`, набор из 93 кейсов против PostgreSQL 15 (контейнер Docker,
+Все числа ниже **измерены**, а не взяты из головы: прогон 12.11.2026 на ветке
+`test/openapi-contract`, набор из 110 кейсов против PostgreSQL 15 (контейнер Docker,
 база `recipes_test`), `coverage.py` 7.5.3, Python 3.12 локально / 3.11 в CI.
 
 ## 1. Как воспроизвести
 
 ```bash
 cd backend
-pip install -r requirements-dev.txt                     # pytest, coverage, black, ruff
+pip install -r requirements-dev.txt                     # pytest, coverage, black, ruff + контрактные либы
 
 # полный набор с базой (тот же прогон, что делает CI)
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
   coverage run -m pytest && coverage report
 
-# только быстрые кейсы без базы (43 из 93)
+# только быстрые кейсы без базы (57 из 110)
 python -m pytest
 ```
 
@@ -36,27 +36,27 @@ python -m pytest
 
 | Метрика | Измерено | Порог плана | Статус |
 |---|---|---|---|
-| Покрытие строк (statement) | **2055 / 2342 = 87,7 %** | ≥ 80 % | ✅ |
-| Покрытие ветвей (branch) | **684 / 843 = 81,1 %** | не задан | ✅ |
-| Комбинированное покрытие (`coverage report`) | **86,0 %** | ≥ 80 % (`fail_under`) | ✅ |
-| Кейсов в наборе | 93 (43 без БД + 50 с БД) | — | ✅ |
+| Покрытие строк (statement) | **2060 / 2346 = 87,8 %** | ≥ 80 % | ✅ |
+| Покрытие ветвей (branch) | **688 / 847 = 81,2 %** | не задан | ✅ |
+| Комбинированное покрытие (`coverage report`) | **86,1 %** | ≥ 80 % (`fail_under`) | ✅ |
+| Кейсов в наборе | 110 (57 без БД + 53 с БД) | — | ✅ |
 
 ### 2.2 По слоям
 
 | Слой | Файлов | Строк | Строки % | Ветвей | Ветви % |
 |---|---|---|---|---|---|
 | `app/api` (маршруты) | 9 | 148 | **100,0 %** | 88 | **100,0 %** |
-| `app/services` (бизнес-логика) | 11 | 299 | 92,6 % | 78 | 85,9 % |
+| `app/services` (бизнес-логика) | 11 | 299 | 93,0 % | 78 | 87,2 % |
 | `app/models` (SQL) | 7 | 184 | 86,4 % | 37 | 70,3 % |
 | `app/ml` (рекомендации, аллергены) | 10 | 774 | 88,9 % | 316 | 82,0 % |
 | `app/importer` (импорт датасета) | 5 | 375 | 89,9 % | 156 | 81,4 % |
-| `app` верхний уровень | 10 | 562 | 79,4 % | 168 | 69,6 % |
+| `app` верхний уровень | 10 | 566 | 79,5 % | 172 | 69,8 % |
 
 Верхний уровень ниже остальных из-за двух файлов, которые тестами не выполняются вообще:
 `app/migrate.py` (CLI миграций, 0 %) и `app/models/fridge_history.py` (мёртвый код, 0 %) —
-подробности в 2.5. Остальные модули слоя: `serializers.py` и `context.py` — 100 %,
-`security.py` — 95,4 %, `config.py` — 93,5 %, `errors.py` — 90,9 %, `db.py` — 84,8 %,
-`validation.py` — 86,2 %.
+подробности в 2.5. Остальные модули слоя: `context.py` и `serializers.py` — 100 %,
+`security.py` — 92,8 %, `config.py` — 89,2 %, `errors.py` — 88,9 %, `db.py` — 85,5 %,
+`validation.py` — 83,2 %.
 
 ### 2.3 Ключевые модули (задачи 5, 6.0–6.2)
 
@@ -74,7 +74,7 @@ python -m pytest
 | `app/importer/__main__.py` (`python -m app.importer`) | 100,0 % | 50,0 % | ветвь `if __name__` проверена, `else` недостижима |
 | `app/services/recipe_presenter.py` (задача 5) | **100,0 %** | **100,0 %** | — |
 | `app/models/recipes.py` | 97,7 % | 66,7 % | не покрыт пустой список id в `list_ingredient_details` |
-| `app/services/recommendation_service.py` | 78,9 % | 70,8 % | не покрыто семантическое скоринг-ветвление |
+| `app/services/recommendation_service.py` | 80,3 % | 75,0 % | не покрыто семантическое скоринг-ветвление |
 | `app/ml/vectorizer.py` | 73,8 % | 55,9 % | эмбеддинги требуют `requirements-ml.txt` |
 | `app/embeddings.py` | 33,3 % | 0,0 % | то же: `EMBEDDINGS_ENABLED=false` в тестах |
 
@@ -82,7 +82,7 @@ python -m pytest
 
 | Область | Порог | Измерено | Статус |
 |---|---|---|---|
-| Весь `app/` | ≥ 80 % (комбинированное) | 86,0 % | ✅ |
+| Весь `app/` | ≥ 80 % (комбинированное) | 86,1 % | ✅ |
 | Новые модули задачи 6.1 (`importer`, `ml/allergens`, `ml/model`) | ≥ 85 % строк | 89,9 / 100 / 90,7 % | ✅ |
 | Фильтр аллергенов (`ml/allergens` + `allergen_service`) | 100 % ветвей | 100 / 100 % | ✅ |
 | Новые модули задачи 5 (`recipe_presenter`, `serializers`) | ≥ 95 % строк | 100 / 100 % | ✅ |
@@ -98,7 +98,7 @@ python -m pytest
 | `app/migrate.py` | 0 % | CLI версионированных миграций: тесты поднимают схему через `Database.ensure_schema` (`AUTO_INIT_SCHEMA=true`), поэтому раннер не запускается — ему нужна отдельная пустая база | отдельный кейс с чистой базой в `test_database.py` |
 | `app/models/fridge_history.py` | 0 % | **модуль нигде не используется**: история холодильника пишется триггерами в БД и проверяется в `tests/test_database.py` через SQL | удалить файл отдельной задачей |
 | `app/embeddings.py`, `app/ml/vectorizer.py` | 33,3 / 73,8 % | семантическое скоринг-ветвление требует `sentence-transformers` (`requirements-ml.txt`); базовый набор идёт с `EMBEDDINGS_ENABLED=false`, чтобы CI не тянул лишние гигабайты | отдельный job с `requirements-ml.txt` |
-| `app/services/recommendation_service.py` | 78,9 % | то же эмбеддинг-ветвление и откат по `ImportError/OSError` | закрывается тем же ML-job’ом |
+| `app/services/recommendation_service.py` | 80,3 % | то же эмбеддинг-ветвление и откат по `ImportError/OSError` | закрывается тем же ML-job’ом |
 | `app/ml/allergen_eval.py` | 66,0 % | не покрыта CLI-часть скрипта разметки (аргументы, запись отчёта) | при необходимости — кейс на CLI |
 | `app/importer/cli.py` | 89,2 % | ветки ошибок скачивания и распаковки, которые трудно воспроизвести без сети | оставить: сеть подменяется только в успешном сценарии |
 
@@ -118,14 +118,28 @@ python -m pytest
   `X-Forwarded-For`); до него `app/security.py` был 72 %;
 - 1 кейс в `tests/test_importer_povarenok.py` — точка входа `python -m app.importer`.
 
+### 2.7 Второй заход: контракт перестал быть «пересказанным» (93 → 110)
+
+Отдельная порция работы закрыла слабое место из 2.5 и из раздела «чего не хватает»: `openapi.yaml`
+раньше не открывал ни один тест, а список адресов жил второй копией в `tests/test_system.py`.
+Добавлено 17 кейсов в `tests/test_openapi_contract.py` и 1 кейс на сериализацию даты, ручной
+список маршрутов удалён (110 кейсов вместо 93, 57 без БД).
+
+Что это дало по цифрам: `app/api` остался на 100 %, `app/services` вырос до 93,0 % строк (кейсы
+прошли через `/recommend_recipes` и `/suggest_recipes`, подняв `recommendation_service.py`
+с 78,9 до 80,3 %), `app/serializers.py` — 100 % строк после кейса на «голую» метку времени.
+Заодно нашлись и исправлены четыре дефекта самого контракта: `servers` внутри `info` (файл был
+невалиден), `oneOf` из двух неразличимых схем (не проходил ни один реальный ответ), отсутствующие
+`required` и недокументированные 400/404 у рецептов и холодильника.
+
 ## 3. Уровни тестирования (ГОСТ Р 56920-2016 / ISO/IEC/IEEE 29119-1)
 
 | Уровень | Что проверяет в проекте | Где |
 |---|---|---|
-| Компонентное (модульное) | чистые функции без Flask и БД: словарь аллергенов, предобработка текста, KNN, парсер датасета, форматтеры, валидация, разбор `settings` | `test_allergens.py` (13 кейсов без БД), `test_ml_engine.py`, `test_importer_povarenok.py` (9 без БД), `test_recommendation_model.py` (8 без БД), `test_auth.py` |
-| Интеграционное | Flask-приложение + настоящая PostgreSQL: маршрут → сервис → SQL → ограничения, внешние ключи, триггеры, коды ответов | `test_recipes.py`, `test_favorites.py`, `test_fridge.py`, `test_database.py`, `test_notifications_recommendations.py`, `test_smart_recommendations.py`, `test_user_preferences.py` (50 кейсов с БД) |
+| Компонентное (модульное) | чистые функции без Flask и БД: словарь аллергенов, предобработка текста, KNN, парсер датасета, форматтеры, сериализаторы дат, валидация, разбор `settings` | `test_allergens.py` (13 кейсов без БД), `test_ml_engine.py`, `test_importer_povarenok.py` (9 без БД), `test_recommendation_model.py` (8 без БД), `test_fridge.py` (1 кейс сериализации), `test_auth.py` |
+| Интеграционное | Flask-приложение + настоящая PostgreSQL: маршрут → сервис → SQL → ограничения, внешние ключи, триггеры, коды ответов | `test_recipes.py`, `test_favorites.py`, `test_fridge.py`, `test_database.py`, `test_notifications_recommendations.py`, `test_smart_recommendations.py`, `test_user_preferences.py` (53 кейса с БД) |
 | Системное | сквозные сценарии через API: регистрация → профиль аллергий → рецепт → избранное → рекомендация; импорт датасета → выдача рецепта через `GET /recipes/{id}` с `ingredient_list` | `test_smart_recommendations.py`, `test_notifications_recommendations.py`, `test_allergens.py` (2 кейса), `test_recipes.py::test_imported_recipe_exposes_the_source_and_the_ingredient_list` |
-| Приёмочное | критерии приёмки задач: метрики ранжирования модели (`python -m app.ml.evaluate` возвращает 1, если v1 не лучше baseline), `violation_rate = 0` на размеченной выборке, соответствие `openapi.yaml` (22 адреса), зелёный CI | `test_recommendation_model.py`, `test_allergens.py`, `test_system.py::test_registered_routes_match_the_contract`, CI |
+| Приёмочное | критерии приёмки задач: метрики ранжирования модели (`python -m app.ml.evaluate` возвращает 1, если v1 не лучше baseline), `violation_rate = 0` на размеченной выборке, соответствие `openapi.yaml` (22 адреса, валидность файла, маршруты, лимиты и тела ответов), зелёный CI | `test_recommendation_model.py`, `test_allergens.py`, `test_openapi_contract.py`, CI |
 
 Статический анализ (`ruff`) и форматирование (`black`) — не уровень тестирования по 29119, но
 часть контроля качества: оба шага обязательны в CI.
@@ -138,7 +152,7 @@ python -m pytest
 | Планирование тестирования | что и зачем проверяем в каждой задаче, критерии «готово», риски | `docs/sprint-2-plan.md` (разделы задач, «Готово, если», «Риски») |
 | Мониторинг и управление | прогон на каждый PR и push в `main`, отчёт с числами и кодом возврата | `.github/workflows/backend-tests.yml`, `TEST-CHECKLIST.md` |
 | Проектирование и реализация тестов | таблица «адрес → кейсы», по одному-два кейса на адрес (успех + отказ), имя кейса = проверяемое требование | `TEST-CHECKLIST.md`, `backend/tests/` |
-| Окружение тестирования | PostgreSQL 15 в сервисе CI; локально — контейнер Docker; без базы 43 кейса выполняются, 50 скипаются | `tests/conftest.py`, `docker-compose.yml` |
+| Окружение тестирования | PostgreSQL 15 в сервисе CI; локально — контейнер Docker; без базы 57 кейсов выполняются, 53 скипаются | `tests/conftest.py`, `docker-compose.yml` |
 | Выполнение тестов | `coverage run -m pytest` (тот же запуск считает покрытие) | CI, §1 этого документа |
 | Оценка критериев завершения и отчёт | числа прогона, покрытие и порог 80 %, отчёт по задачам | «Итог последнего прогона» в `TEST-CHECKLIST.md`, `TASKS-REPORT.md`, этот документ |
 
@@ -182,14 +196,14 @@ python -m pytest
 
 | Характеристика | Чем подтверждена | Статус |
 |---|---|---|
-| Функциональная полнота | 22 адреса из контракта зарегистрированы и проверены (`test_registered_routes_match_the_contract` + кейсы на каждый адрес) | ✅ |
+| Функциональная полнота | 22 адреса из контракта зарегистрированы и проверены (`test_openapi_contract.py::test_the_contract_describes_exactly_the_routes_of_the_application` + кейсы на каждый адрес) | ✅ |
 | Функциональная корректность | успех и отказ на каждом адресе, границы валидации, ограничения и триггеры БД (`test_database.py`), `violation_rate = 0` на разметке аллергенов | ✅ |
 | Надёжность (безотказность, восстанавливаемость) | `/health` без БД, `/ready` 503/200, единый формат ошибок, идемпотентность импорта и избранного; падение базы во время запроса не проверяется | ⚠️ частично |
 | Производительность | только замеры импорта и обучения модели (`docs/recommendation-model.md`, `docs/db_plan`); нагрузочных тестов и замеров p95 нет | ❌ не подтверждена |
 | Безопасность | JWT и scrypt, 401 в 6 вариантах, изоляция данных по `user_id` из токена, лимит запросов (429) | ✅ (кроме аудита зависимостей) |
 | Совместимость | PostgreSQL 15, Python 3.11; другие СУБД и версии не проверяются | ⚠️ частично |
 | Удобство использования (для API) | единый формат ошибок `{"error": ...}`, коды 201/400/401/404/405/409/429, описанные в контракте | ⚠️ частично |
-| Сопровождаемость | модульная структура, docstring на каждом модуле, `ruff`/`black` в CI, покрытие 87,7 % строк | ✅ |
+| Сопровождаемость | модульная структура, docstring на каждом модуле, `ruff`/`black` в CI, покрытие 87,8 % строк | ✅ |
 | Переносимость | `docker compose`, конфигурация через env, `.env.example` | ⚠️ частично |
 
 ## 8. Чего не хватает для полного соответствия
