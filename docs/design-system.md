@@ -152,7 +152,7 @@ Figma-файл проекта закрыт (ссылка не открывает
 2. Страница: файл в `src/pages/`, модуль рядом; путь — в `ROUTES` (`src/app/routes.ts`).
 3. Лейаут: до входа — `AuthLayout`, после — `AppLayout` (в `src/App.tsx`).
 4. Тест: роль + доступное имя (не класс и не цвет), в `src/__tests__/`.
-5. Проверки: `npm run typecheck && npm run lint && npm run format:check && npm run test:run &&
+5. Проверки: `npm run typecheck && npm run lint && npm run format:check && npm run test:coverage &&
    npm run build`.
 6. Визуальная проверка: `npm run dev` и скриншоты headless Firefox
    (`firefox --headless --window-size=1440,1040 --screenshot ... http://localhost:3000/login`).

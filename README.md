@@ -383,7 +383,8 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 - **Docker-пайплайн** (`.github/workflows/docker-image.yml`) — на push в `main`: сборка образов,
   `docker compose up -d` и smoke-проверка `/ready` + `/health`.
 - **Frontend CI** (`.github/workflows/frontend-ci.yml`) — на push в `main` и на каждый PR: Node 22,
-  `npm ci`, затем `eslint`, `prettier --check`, `tsc -b`, `vitest run` и `vite build`.
+  `npm ci`, затем `eslint`, `prettier --check`, `tsc -b`, `vitest run --coverage` (порог 80 %) и
+  `vite build`.
 
 ### Отличия от CONTRIBUTION.md, зафиксированные в коде
 
@@ -418,7 +419,7 @@ frontend/
     ├── mocks/recipe.ts    # типизированный мок рецепта до появления API
     ├── components/        # layout (шапка/подвал/каркасы), ui (Button, поля), recipe-блоки
     ├── pages/             # LoginPage, RecipePage, NotFoundPage
-    ├── __tests__/         # 25 кейсов: маршруты, вход, рецепт
+    ├── __tests__/         # 29 кейсов: маршруты, вход, рецепт, компоненты
     ├── App.tsx            # <Routes> и два лейаута
     └── main.tsx           # шрифты, токены, createRoot + BrowserRouter
 ```
@@ -427,7 +428,8 @@ frontend/
 cd frontend
 npm ci
 npm run dev              # http://localhost:3000
-npm run test:run         # 25 тестов
+npm run test:run         # 29 тестов
+npm run test:coverage    # те же тесты + покрытие и порог 80 %
 npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
 
@@ -444,6 +446,8 @@ npm run typecheck && npm run lint && npm run format:check && npm run build
 
 Вёрстка: CSS Modules + токены, шрифты Lora/Inter (variable-сборки, локально, без CDN), иконки
 `lucide-react`. Адаптив: 1440 как в макете, 1024/768 и 390 — производные раскладки без
-горизонтального скролла. Проверки фронтенда: **25 кейсов** в трёх файлах (Vitest + Testing
-Library), `eslint`, `prettier --check`, `tsc -b`, `vite build` — всё зелёное; `dist/` — 289 КБ JS
-(91,8 КБ gzip), 23,7 КБ CSS (5,6 КБ gzip) и 9 файлов шрифтов.
+горизонтального скролла. Проверки фронтенда: **29 кейсов** в пяти файлах (Vitest + Testing
+Library), покрытие измеряется (`@vitest/coverage-v8`) при пороге 80 % и в CI: **100 %** по
+statements/branches/functions/lines на 17 файлах `src/`; `eslint`, `prettier --check`, `tsc -b`,
+`vite build` — всё зелёное; `dist/` — 289 КБ JS (91,8 КБ gzip), 23,7 КБ CSS (5,6 КБ gzip) и
+9 файлов шрифтов. Подробности — `docs/test-coverage.md` §2.11.
