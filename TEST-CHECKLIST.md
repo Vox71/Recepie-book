@@ -4,7 +4,7 @@
 (`backend/tests/`, `pytest`) и фронтенда (`frontend/src/__tests__/`, `vitest`), и того, что именно
 проверяет каждый кейс.
 
-**Состав набора:** **151 кейс в 16 файлах** на бэкенде (подробно ниже) и **8 кейсов** на
+**Состав набора:** **151 кейс в 16 файлах** на бэкенде (подробно ниже) и **25 кейсов** на
 фронтенде (раздел «Фронтенд» в конце). 80 бэкендовых кейсов работают без базы (проверка входных
 данных, работа с токеном, служебные адреса, сам контракт `openapi.yaml`, компоненты ML-модуля,
 словарь аллергенов и его метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета
@@ -33,7 +33,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 # фронтенд (Node >= 22.12)
 cd ../frontend
 npm ci
-npm run test:run                 # 8 cases, vitest
+npm run test:run                 # 25 cases, vitest
 npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
 
@@ -588,26 +588,54 @@ CI на PostgreSQL 15: там доступность базы контролир
 
 # Фронтенд (Vitest + Testing Library)
 
-Спринт 3, задача 3. Тесты живут рядом с кодом (`frontend/src/__tests__/routing.test.tsx`), не
-ходят в сеть и не поднимают браузер: адрес задаётся `MemoryRouter`, DOM даёт jsdom, клик —
-`@testing-library/user-event`. Порог покрытия для фронтенда пока не задан: кроме таблицы
-маршрутов в коде нет логики, процент ничего не измеряет.
+Спринт 3, задачи 3–4. Тесты живут рядом с кодом (`frontend/src/__tests__/`), не ходят в сеть и не
+поднимают браузер: адрес задаётся `MemoryRouter`, DOM даёт jsdom, клик —
+`@testing-library/user-event`. Порог покрытия для фронтенда пока не задан: кроме разметки и одного
+локального toggle в коде нет логики, процент ничего не измеряет; порог появится с API-клиентом.
 
-Запуск: `cd frontend && npm ci && npm run test:run` → **8 passed**.
+Запуск: `cd frontend && npm ci && npm run test:run` → **25 passed** в трёх файлах.
+
+## `routing.test.tsx` — 9 кейсов
 
 | Кейс | Что проверяет |
 |---|---|
-| `renders the login page at /login` | по адресу `/login` рендерится форма входа: заголовок, поле email с `type=email`, поле пароля с `type=password` |
-| `passes the recipe id from the address to the recipe page` | `/recipes/42` → на странице заголовок «Рецепт #42», то есть параметр маршрута действительно доходит до компонента |
-| `does not render the login form on the recipe page` | на странице рецепта нет формы входа (маршруты не накладываются друг на друга) |
-| `redirects / to the login page` | адрес `/` не пустой экран, а `Navigate` на `/login` |
-| `renders the 404 page for an unknown address` | `/no-such-page` → страница 404 и ссылка «Перейти ко входу» с `href="/login"` |
-| `renders the 404 page when the recipe id is missing` | `/recipes/` без параметра не падает и не показывает пустой рецепт, а уходит на 404 |
-| `navigates from the recipe page to the login page by the link in the layout` | ссылка «Вход» в шапке действительно переводит на `/login`, а страница рецепта исчезает |
-| `keeps the layout around every page` | общий каркас (`<h1>` и навигация) присутствует на каждой странице, а не дублируется в каждой |
+| `renders the login page at /login` | по `/login` рендерится вход: заголовок «С возвращением!», поле Email с `type=email`, поле пароля с `type=password` |
+| `passes the recipe id from the address to the recipe page` | `/recipes/42` → заголовок рецепта и `data-recipe-id="42"` на контейнере, то есть параметр маршрута доходит до страницы |
+| `does not render the login form on the recipe page` | на странице рецепта нет формы входа (маршруты не накладываются) |
+| `redirects / to the login page` | `/` — не пустой экран, а `Navigate` на `/login` |
+| `renders the 404 page for an unknown address` | `/no-such-page` → 404 и ссылка «Перейти ко входу» с `href="/login"` |
+| `renders the 404 page when the recipe id is missing` | `/recipes/` без параметра уходит на 404, а не показывает пустой рецепт |
+| `navigates from the recipe page to the login page by the logo` | клик по логотипу с `/recipes/42` возвращает на вход |
+| `keeps the login frame without the navigation` | на входе есть шапка и подвал макета 03, но нет пилюль-навигации |
+| `keeps the signed-in frame with the navigation and the footer` | на странице рецепта есть навигация и трёхколоночный подвал |
 
-**Проверено 12.11.2026** на ветке `feat/react-router`: `npm run test:run` — 8/8, `npm run
-typecheck`, `npm run lint`, `npm run format:check`, `npm run build` — все с кодом 0; dev-сервер
-отвечает 200 на `/login`, `/recipes/42` и `/no-such-page`; `docker build ./frontend` собирается.
+## `login-page.test.tsx` — 6 кейсов
 
-  дрейфует; pytest-ом это не проверяется и не должно.
+| Кейс | Что проверяет |
+|---|---|
+| `shows the greeting, the subtitle and the form` | заголовок «С возвращением!», подзаголовок и кнопка «Войти» с `type=submit` |
+| `shows the promises of the hero card` | надпись, заголовок и абзац поверх фотокарточки — как в макете |
+| `switches the password visibility and reports the state` | toggle меняет `type` поля, `aria-pressed` и доступное имя («Показать пароль» ↔ «Скрыть пароль») |
+| `does not leave the page on submit (there is no API yet)` | заполненная форма по «Войти» остаётся на странице: запрос не отправляется |
+| `marks both registration controls as unavailable` | обе кнопки «Создать аккаунт» (в шапке и под формой) с `aria-disabled="true"` |
+| `shows the footer of the login screen` | копирайт, фраза подвала и подпись под разделителем |
+
+## `recipe-page.test.tsx` — 10 кейсов
+
+| Кейс | Что проверяет |
+|---|---|
+| `shows the title, the description and the meta row` | `h1` рецепта и мета «25 минут», «Легко», «2 порции» |
+| `summarises what is already at home and what is missing` | плашки «5 из 7 ингредиентов уже есть» и «Нужно добавить масло и соль» |
+| `lists every ingredient with its fridge status and quantity` | 7 строк в карточке ингредиентов; «Паста» с «Есть в холодильнике» и 200 г, «Оливковое масло» с «Нужно добавить» |
+| `warns about the allergens of the recipe` | плашка «Аллергены: глютен» |
+| `renders the steps in order with their time` | 4 шага по порядку, первый — «Подготовьте овощи» с «5 минут», последний — «Соедините и подавайте»; подпись «4 простых шага» |
+| `links the source of the idea in a new tab safely` | ссылка BBC Good Food: `href`, `target="_blank"`, `rel` с `noopener` и `noreferrer` |
+| `toggles the favourite button locally and reports the state` | кнопка «В избранное» переключает `aria-pressed` (локально, без API) |
+| `shows the breadcrumbs with the current recipe` | крошки с названием рецепта и отключённой «Лентой рецептов» |
+| `marks the feed as the current section of the navigation` | три пункта навигации, «Лента» подсвечена, «Избранное» с `aria-disabled` |
+| `shows the footer of the signed-in screens` | трёхколоночный подвал с девизом и годом |
+
+**Проверено 13.11.2026** на ветке `feat/auth-recipe-design`: `npm run test:run` — 25/25,
+`npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build` — код 0; `npm ci` из
+lock-файла; dev-сервер отвечает 200 на `/login`, `/recipes/42` и `/no-such-page`; скриншоты
+headless Firefox на 1440/1024/768/390 сверены с макетами вручную.
