@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 690 430" role="img" aria-label="Фотография блюда: заглушка">
+  <!-- Placeholder for the hero photo of the recipe page (frontend/design/02 — Страница
+       рецепта.png). Replace it with the exported mockup image in src/assets/. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#efe9da" />
+      <stop offset="0.6" stop-color="#ddd6c2" />
+      <stop offset="1" stop-color="#c3c4ab" />
+    </linearGradient>
+    <radialGradient id="plate" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#fcfbf7" />
+      <stop offset="0.85" stop-color="#eeeadf" />
+      <stop offset="1" stop-color="#dcd6c6" />
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" />
+    </filter>
+    <filter id="softer" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="26" />
+    </filter>
+  </defs>
+
+  <rect width="690" height="430" fill="url(#bg)" />
+  <ellipse cx="120" cy="80" rx="220" ry="120" fill="#fdfbf4" opacity="0.5" filter="url(#softer)" />
+
+  <!-- Cloth -->
+  <path d="M0 300 C 150 260 300 330 450 300 C 560 278 640 310 690 296 L690 430 L0 430 Z"
+        fill="#f0ebde" opacity="0.9" />
+
+  <!-- Plate -->
+  <ellipse cx="345" cy="230" rx="215" ry="150" fill="url(#plate)" />
+  <ellipse cx="345" cy="230" rx="168" ry="116" fill="none" stroke="#cfc9b8" stroke-width="2"
+           opacity="0.65" />
+
+  <!-- Food -->
+  <g filter="url(#soft)">
+    <ellipse cx="300" cy="222" rx="64" ry="40" fill="#cfaa66" />
+    <ellipse cx="392" cy="200" rx="56" ry="34" fill="#dcb97c" />
+    <ellipse cx="356" cy="272" rx="68" ry="38" fill="#c8a45f" />
+    <circle cx="266" cy="186" r="22" fill="#b4553f" />
+    <circle cx="424" cy="252" r="19" fill="#b4553f" />
+    <circle cx="330" cy="170" r="15" fill="#a84c39" />
+    <circle cx="404" cy="286" r="17" fill="#b4553f" />
+    <ellipse cx="304" cy="284" rx="30" ry="15" fill="#6f8257" />
+    <ellipse cx="416" cy="172" rx="26" ry="14" fill="#7b8f60" />
+  </g>
+
+  <!-- Basil and cutlery -->
+  <g fill="#4f6a44" opacity="0.9">
+    <path d="M520 150 c 22 -14 46 -10 52 0 c -16 14 -36 16 -52 0 Z" />
+    <path d="M542 174 c 20 -10 38 -6 44 2 c -14 10 -30 10 -44 -2 Z" />
+  </g>
+  <g stroke="#9d9a8c" stroke-width="6" stroke-linecap="round" opacity="0.85">
+    <path d="M498 244 L498 404" />
+    <path d="M478 244 L478 296" />
+    <path d="M518 244 L518 296" />
+    <path d="M150 250 L150 404" />
+  </g>
+</svg>

@@ -1,0 +1,98 @@
+/* Design tokens of the client (sprint 3, task 4).
+ *
+ * The values are measured from the mockups in `frontend/design/*.png`: the palette was
+ * sampled pixel by pixel (ImageMagick), the sizes are read off the 1440 px frames.
+ * Nothing in the components may use a raw hex or a raw size: a colour or a step of the
+ * scale changes here and nowhere else. `docs/design-system.md` explains each group.
+ */
+:root {
+  /* Palette */
+  --color-bg: #faf9f5; /* page background of every frame */
+  --color-surface: #ffffff; /* ingredient card */
+  --color-surface-muted: #eff3e8; /* active nav pill, step numbers, availability banner */
+  --color-peach: #f7dece; /* avatar, allergen banner */
+  --color-brand: #234d39; /* primary button, logo tile */
+  --color-brand-hover: #1c4030;
+  --color-brand-soft: #dfe8dc; /* hover of the outline button */
+  --color-ink: #203f32; /* headings and strong text */
+  --color-text: #2b332e; /* body text */
+  --color-muted: #6b7268; /* hints, captions, secondary text */
+  --color-border: #e4e7de; /* card and input borders, dividers */
+  --color-border-strong: #d3d8cb;
+  --color-overlay: rgba(24, 48, 36, 0.55); /* gradient over the login photo */
+  --color-danger: #a4452f;
+
+  /* Typography: variable builds, one file per unicode subset (see src/main.tsx). */
+  --font-display: 'Lora Variable', 'Times New Roman', serif;
+  --font-body: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --text-xs: 0.75rem; /* 12 px: eyebrows, captions */
+  --text-sm: 0.8125rem; /* 13 px: hints, footer */
+  --text-base: 0.9375rem; /* 15 px: body */
+  --text-md: 1rem; /* 16 px: inputs */
+  --text-lg: 1.125rem; /* 18 px: step titles */
+  --text-xl: 1.375rem; /* 22 px: logo wordmark */
+  --text-2xl: 1.875rem; /* 30 px: section headings */
+  --text-3xl: 2.75rem; /* 44 px: page titles */
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-normal: 1.55;
+
+  --tracking-caps: 0.12em; /* uppercase eyebrow */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* Spacing scale (4 px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+  --space-11: 80px;
+  --space-12: 96px;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* Layout */
+  --container: 1280px; /* header, footer and content of the recipe page */
+  --gutter: 80px; /* 1440 - 1280 = 160, 80 per side */
+  --header-height: 84px;
+  --footer-height: 88px;
+
+  /* Effects */
+  --shadow-card: 0 1px 2px rgba(32, 63, 50, 0.06), 0 16px 40px rgba(32, 63, 50, 0.06);
+  --shadow-raised: 0 2px 6px rgba(32, 63, 50, 0.08), 0 20px 48px rgba(32, 63, 50, 0.1);
+  --transition-fast: 120ms ease-out;
+}
+
+/* The mockups are desktop only (1440 px), the narrower steps are derived from them. */
+@media (max-width: 1199px) {
+  :root {
+    --gutter: 40px;
+    --text-3xl: 2.25rem; /* 36 px */
+    --text-2xl: 1.625rem; /* 26 px */
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --gutter: 20px;
+    --header-height: 68px;
+    --text-3xl: 1.875rem; /* 30 px */
+    --text-2xl: 1.5rem; /* 24 px */
+    --space-10: 48px;
+    --space-11: 56px;
+  }
+}
