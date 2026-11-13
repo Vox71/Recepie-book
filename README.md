@@ -1,6 +1,8 @@
 # Recepie-book
 Учебный групповой проект
 
+Клиент — React + TypeScript + React Router (Раздел «Фронтенд» ниже), сервер — Flask + PostgreSQL.
+
 ## Бэкенд (Flask + PostgreSQL)
 
 Реализация соответствует контракту `openapi.yaml` (Swagger — источник истины), и это проверяется
@@ -373,13 +375,15 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 
 - **Backend CI** (`.github/workflows/backend-tests.yml`) — на push в `main` и на каждый PR:
   Python 3.11, сервисный контейнер PostgreSQL 15, затем `ruff check .`, `black --check .`,
-  обучение модели с проверкой метрик и весь набор под `coverage` (93 кейса, DB-часть идёт против
+  обучение модели с проверкой метрик и весь набор под `coverage` (151 кейс, DB-часть идёт против
   сервисной базы `recipes_test`; файл `tests/test_database.py` проверяет саму схему БД
   `docs/db_scheme.png` и триггеры истории).
   Отдельный шаг проверяет доступность БД, чтобы набор не «позеленел» на одних скипах
   (`tests/conftest.py` пропускает DB-тесты, когда `TEST_DATABASE_URL` недоступен).
 - **Docker-пайплайн** (`.github/workflows/docker-image.yml`) — на push в `main`: сборка образов,
   `docker compose up -d` и smoke-проверка `/ready` + `/health`.
+- **Frontend CI** (`.github/workflows/frontend-ci.yml`) — на push в `main` и на каждый PR: Node 22,
+  `npm ci`, затем `eslint`, `prettier --check`, `tsc -b`, `vitest run` и `vite build`.
 
 ### Отличия от CONTRIBUTION.md, зафиксированные в коде
 
@@ -389,4 +393,52 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 - `POST /recipes` — без JWT;
 - `GET /fridge_items` и `DELETE /delete_expired_products` — работают со всеми пользователями;
 - формат ошибок — `{"error": "<строка>"}`; JWT живёт 12 часов; пагинация есть у `GET /recipes`,
+
+## Фронтенд (React + TypeScript)
+
+Каркас клиента из задачи 3 спринта 3: проект, роутинг и две страницы-заготовки. Вёрстки и
+вызовов API пока нет — это следующие задачи ([`docs/sprint-4-plan.md`](docs/sprint-4-plan.md)),
+подробный гайд — [`docs/frontend.md`](docs/frontend.md).
+
+```
+frontend/
+├── index.html
+├── package.json           # скрипты dev/build/test/lint/format/typecheck, версии зафиксированы
+├── package-lock.json      # коммитится: npm ci в CI и в образе опирается на него
+├── vite.config.ts         # порт 3000 + strictPort, конфиг тестов (jsdom)
+├── tsconfig*.json         # строгий TypeScript, отдельно приложение и конфиг
+├── eslint.config.js       # flat config: js + typescript-eslint + react-hooks + react-refresh
+├── Dockerfile             # node:22-slim, npm ci, dev-сервер на 0.0.0.0:3000
+└── src/
+    ├── app/routes.ts      # единственное место с адресами + recipePath(id)
+    ├── components/AppLayout.tsx  # шапка, навигация, <Outlet />
+    ├── pages/             # LoginPage, RecipePage, NotFoundPage
+    ├── __tests__/routing.test.tsx  # 8 кейсов на маршруты
+    ├── App.tsx            # только <Routes>
+    └── main.tsx           # createRoot + BrowserRouter
+```
+
+```bash
+cd frontend
+npm ci
+npm run dev              # http://localhost:3000
+npm run test:run         # 8 тестов
+npm run typecheck && npm run lint && npm run format:check && npm run build
+```
+
+| Путь | Страница |
+|---|---|
+| `/` | перенаправление на `/login` |
+| `/login` | вход (форма-заглушка, пока без отправки) |
+| `/recipes/:recipeId` | рецепт: id берётся из адреса |
+| `*` | страница 404 |
+
+Порт **3000** выбран не случайно: ровно этот origin стоит в `CORS_ORIGINS` (`.env.example`,
+`docker-compose.yml`), а `strictPort: true` не даёт Vite молча переехать на другой порт и сломать
+обращения к API. Требуется Node >= 22.12; в CI и в образе используется Node 22.
+
+Проверки фронтенда: 8 кейсов `frontend/src/__tests__/routing.test.tsx` (Vitest + Testing
+Library), `eslint`, `prettier --check`, `tsc -b`, `vite build` — всё зелёное, `dist/` собирается
+(~261 КБ JS, 83 КБ gzip).
+
   `GET /fridge_items` и `GET /favorite_recipes` (`limit`/`offset`), остальные списки отдаются целиком.
