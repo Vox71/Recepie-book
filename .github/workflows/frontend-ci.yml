@@ -1,0 +1,56 @@
+name: Frontend CI
+
+# Спринт 3, задача 3: каркас фронтенда (React + TypeScript + React Router).
+# Проверки те же, что локально: eslint, prettier, tsc, vitest, vite build
+# (CONTRIBUTION.md §10 «тесты», §11 «стиль», §15 «CI зелёный»).
+# Отдельный workflow: backend-джобы здесь ничего не проверяют.
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: lint, typecheck, test and build (Node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci, а не npm install: сборка обязана падать, если lockfile разошёлся
+      # с package.json, иначе CI проверяет не то, что лежит в репозитории.
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Format check (prettier)
+        run: npm run format:check
+
+      - name: Typecheck (tsc)
+        run: npm run typecheck
+
+      - name: Unit tests (vitest)
+        run: npm run test:run
+
+      - name: Build (vite)
+        run: npm run build

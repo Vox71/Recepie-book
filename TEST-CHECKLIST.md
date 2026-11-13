@@ -1,9 +1,11 @@
-# Чек-лист тестов API
+# Чек-лист тестов
 
 Приложение к отчёту `TASKS-REPORT.md`: полный перечень автоматических проверок backend
-(`backend/tests/`, `pytest`) и того, что именно проверяет каждый кейс.
+(`backend/tests/`, `pytest`) и фронтенда (`frontend/src/__tests__/`, `vitest`), и того, что именно
+проверяет каждый кейс.
 
-**Состав набора:** **151 кейс в 16 файлах**. 80 кейсов работают без базы (проверка входных
+**Состав набора:** **151 кейс в 16 файлах** на бэкенде (подробно ниже) и **8 кейсов** на
+фронтенде (раздел «Фронтенд» в конце). 80 бэкендовых кейсов работают без базы (проверка входных
 данных, работа с токеном, служебные адреса, сам контракт `openapi.yaml`, компоненты ML-модуля,
 словарь аллергенов и его метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета
 и CLI импорта, разбор страниц рецептов на сохранённых страницах), 71 — против реальной PostgreSQL
@@ -27,6 +29,12 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase pytho
 # покрытие (statement + branch) и порог 80 %, см. docs/test-coverage.md
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
   coverage run -m pytest && coverage report
+
+# фронтенд (Node >= 22.12)
+cd ../frontend
+npm ci
+npm run test:run                 # 8 cases, vitest
+npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
 
 То же самое автоматически выполняет CI: workflow `Backend CI`
@@ -575,4 +583,31 @@ CI на PostgreSQL 15: там доступность базы контролир
   изоляцию по токену и состояния, поэтому тесты сравнивают `ends_at − started_at` и содержимое
   таблицы. Точность отрисовки — свойство клиентского алгоритма (`docs/timer.md` §5): 250-мс шаг
   перерисовки и остаток, посчитанный от пары «`ends_at` − `server_time`», поэтому отсчёт не
+
+---
+
+# Фронтенд (Vitest + Testing Library)
+
+Спринт 3, задача 3. Тесты живут рядом с кодом (`frontend/src/__tests__/routing.test.tsx`), не
+ходят в сеть и не поднимают браузер: адрес задаётся `MemoryRouter`, DOM даёт jsdom, клик —
+`@testing-library/user-event`. Порог покрытия для фронтенда пока не задан: кроме таблицы
+маршрутов в коде нет логики, процент ничего не измеряет.
+
+Запуск: `cd frontend && npm ci && npm run test:run` → **8 passed**.
+
+| Кейс | Что проверяет |
+|---|---|
+| `renders the login page at /login` | по адресу `/login` рендерится форма входа: заголовок, поле email с `type=email`, поле пароля с `type=password` |
+| `passes the recipe id from the address to the recipe page` | `/recipes/42` → на странице заголовок «Рецепт #42», то есть параметр маршрута действительно доходит до компонента |
+| `does not render the login form on the recipe page` | на странице рецепта нет формы входа (маршруты не накладываются друг на друга) |
+| `redirects / to the login page` | адрес `/` не пустой экран, а `Navigate` на `/login` |
+| `renders the 404 page for an unknown address` | `/no-such-page` → страница 404 и ссылка «Перейти ко входу» с `href="/login"` |
+| `renders the 404 page when the recipe id is missing` | `/recipes/` без параметра не падает и не показывает пустой рецепт, а уходит на 404 |
+| `navigates from the recipe page to the login page by the link in the layout` | ссылка «Вход» в шапке действительно переводит на `/login`, а страница рецепта исчезает |
+| `keeps the layout around every page` | общий каркас (`<h1>` и навигация) присутствует на каждой странице, а не дублируется в каждой |
+
+**Проверено 12.11.2026** на ветке `feat/react-router`: `npm run test:run` — 8/8, `npm run
+typecheck`, `npm run lint`, `npm run format:check`, `npm run build` — все с кодом 0; dev-сервер
+отвечает 200 на `/login`, `/recipes/42` и `/no-such-page`; `docker build ./frontend` собирается.
+
   дрейфует; pytest-ом это не проверяется и не должно.
