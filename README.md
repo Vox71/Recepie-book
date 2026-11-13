@@ -3,6 +3,9 @@
 
 Клиент — React + TypeScript + React Router (Раздел «Фронтенд» ниже), сервер — Flask + PostgreSQL.
 
+Отчёт о спринте 3 простым языком — кто какую задачу делал и что рассказать на защите —
+[`docs/sprint-3-report.md`](docs/sprint-3-report.md).
+
 ## Бэкенд (Flask + PostgreSQL)
 
 Реализация соответствует контракту `openapi.yaml` (Swagger — источник истины), и это проверяется
