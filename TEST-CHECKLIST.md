@@ -4,7 +4,7 @@
 (`backend/tests/`, `pytest`) и фронтенда (`frontend/src/__tests__/`, `vitest`), и того, что именно
 проверяет каждый кейс.
 
-**Состав набора:** **151 кейс в 16 файлах** на бэкенде (подробно ниже) и **25 кейсов** на
+**Состав набора:** **151 кейс в 16 файлах** на бэкенде (подробно ниже) и **29 кейсов** на
 фронтенде (раздел «Фронтенд» в конце). 80 бэкендовых кейсов работают без базы (проверка входных
 данных, работа с токеном, служебные адреса, сам контракт `openapi.yaml`, компоненты ML-модуля,
 словарь аллергенов и его метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета
@@ -33,7 +33,8 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 # фронтенд (Node >= 22.12)
 cd ../frontend
 npm ci
-npm run test:run                 # 25 cases, vitest
+npm run test:run                 # 29 cases, vitest
+npm run test:coverage            # те же кейсы + покрытие и порог 80 %
 npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
 
@@ -588,12 +589,29 @@ CI на PostgreSQL 15: там доступность базы контролир
 
 # Фронтенд (Vitest + Testing Library)
 
-Спринт 3, задачи 3–4. Тесты живут рядом с кодом (`frontend/src/__tests__/`), не ходят в сеть и не
+Спринт 3, задачи 3–5. Тесты живут рядом с кодом (`frontend/src/__tests__/`), не ходят в сеть и не
 поднимают браузер: адрес задаётся `MemoryRouter`, DOM даёт jsdom, клик —
-`@testing-library/user-event`. Порог покрытия для фронтенда пока не задан: кроме разметки и одного
-локального toggle в коде нет логики, процент ничего не измеряет; порог появится с API-клиентом.
+`@testing-library/user-event`.
 
-Запуск: `cd frontend && npm ci && npm run test:run` → **25 passed** в трёх файлах.
+Запуск:
+
+```bash
+cd frontend
+npm ci
+npm run test:run        # 29 passed, 5 файлов
+npm run test:coverage   # те же 29 + покрытие и порог 80 %
+```
+
+## Покрытие и порог (задача 5)
+
+- Провайдер `@vitest/coverage-v8` 5.1.0, настройки — `coverage` в `frontend/vite.config.ts`;
+- порог **80 %** по statements, branches, functions и lines; тот же шаг в CI
+  (`Unit tests and coverage (vitest)`), поэтому просадка ломает сборку;
+- измерено 13.11.2026: **100 %** по всем четырём метрикам на 17 файлах `src/**/*.{ts,tsx}`;
+- вне измерения и с обоснованием: `src/main.tsx` (bootstrap), `src/vite-env.d.ts` (типы),
+  `src/test/**` (обвязка), `src/mocks/**` (данные), `src/assets/**`, сами тесты;
+- 100 % — это про TS/TSX, а не про «интерфейс проверен»: CSS, доступность, кросс-браузерность и
+  визуал остаются за ручной сверкой (см. `docs/test-coverage.md` §2.11 и §8).
 
 ## `routing.test.tsx` — 9 кейсов
 
@@ -635,7 +653,22 @@ CI на PostgreSQL 15: там доступность базы контролир
 | `marks the feed as the current section of the navigation` | три пункта навигации, «Лента» подсвечена, «Избранное» с `aria-disabled` |
 | `shows the footer of the signed-in screens` | трёхколоночный подвал с девизом и годом |
 
-**Проверено 13.11.2026** на ветке `feat/auth-recipe-design`: `npm run test:run` — 25/25,
-`npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build` — код 0; `npm ci` из
-lock-файла; dev-сервер отвечает 200 на `/login`, `/recipes/42` и `/no-such-page`; скриншоты
-headless Firefox на 1440/1024/768/390 сверены с макетами вручную.
+## `routes.test.ts` — 2 кейса (задача 5)
+
+| Кейс | Что проверяет |
+|---|---|
+| `builds a concrete recipe address from an id` | `recipePath(42)` и `recipePath('42')` дают `/recipes/42` — страницы не склеивают адрес вручную |
+| `escapes an id that is not a plain number` | `recipePath('a/b c')` → `/recipes/a%2Fb%20c`: спецсимволы не ломают маршрут |
+
+## `components.test.tsx` — 2 кейса (задача 5)
+
+| Кейс | Что проверяет |
+|---|---|
+| `renders a button without an icon` | ветка `Button` без иконки: доступное имя — текст, лишних элементов нет |
+| `hides the allergen notice when the recipe has no allergens` | карточка без аллергенов не рисует пустую персиковую плашку |
+
+**Проверено 13.11.2026** на ветке `test/frontend-coverage`: `npm run test:coverage` — **29/29**,
+покрытие **100 %** по statements/branches/functions/lines при пороге 80 %; проверено, что завышенный
+порог валит прогон (`--coverage.thresholds.statements=101` → exit 1). `typecheck`, `lint`,
+`format:check`, `build` — код 0; `npm ci` из lock-файла; dev-сервер отвечает 200 на `/login`,
+`/recipes/42`, `/no-such-page`; скриншоты headless Firefox на 1440/1024/768/390 сверены с макетами.

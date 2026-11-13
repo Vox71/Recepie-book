@@ -115,6 +115,10 @@ tests/ # тесты
 - Тесты не должны зависеть от порядка запуска.
 - Использовать `pytest`.
 - Не merge-ить, если тесты падают.
+- Фронтенд: `vitest` + Testing Library, сеть в тестах не используется; покрытие измеряется
+  `npm run test:coverage`, порог **80 %** по statements/branches/functions/lines. Порог, как и у
+  бэкенда, проверяется в CI: просадка покрытия ломает сборку
+  ([`docs/test-coverage.md`](docs/test-coverage.md) §2.11).
 
 ## 11. Стиль кода
 
@@ -168,7 +172,7 @@ tests/ # тесты
 - [ ] Есть тесты, CI зелёный
 - [ ] Логи без паролей и токенов
 - [ ] `black`, `ruff`, `mypy` проходят локально
-- [ ] Для изменений во фронтенде: `npm run typecheck`, `lint`, `format:check`, `test:run` и
+- [ ] Для изменений во фронтенде: `npm run typecheck`, `lint`, `format:check`, `test:coverage` и
       `build` в `frontend/` проходят локально
 
 ## 16. Что нельзя делать ни в каком случае

@@ -49,8 +49,11 @@ jobs:
       - name: Typecheck (tsc)
         run: npm run typecheck
 
-      - name: Unit tests (vitest)
-        run: npm run test:run
+      # Задача 5 спринта 3: тот же прогон под покрытием (Vitest v8, порог 80 % из
+      # vite.config.ts). vitest возвращает 1, если порог не достигнут, поэтому просадка
+      # покрытия ломает CI, а не остаётся незамеченной.
+      - name: Unit tests and coverage (vitest)
+        run: npm run test:coverage
 
       - name: Build (vite)
         run: npm run build
