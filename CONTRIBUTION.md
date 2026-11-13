@@ -127,6 +127,9 @@ tests/ # тесты
 - Фронтенд: форматирование — `prettier` (ширина 100), линтер — `eslint` (flat config),
   типы — `tsc -b` в строгом режиме; вместо `black`/`ruff`/`mypy` эти три команды и есть проверка
   стиля (`npm run format:check`, `npm run lint`, `npm run typecheck`).
+- Стили фронтенда — CSS Modules рядом с компонентом; цвета, шрифты, отступы и радиусы берутся только
+  из `src/styles/tokens.css`, собственных hex и «магических» пикселей в модулях нет
+  ([`docs/design-system.md`](docs/design-system.md)).
 
 ## 12. Фоновые задачи
 

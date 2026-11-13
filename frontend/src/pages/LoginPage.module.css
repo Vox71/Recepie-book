@@ -1,0 +1,200 @@
+/* Login screen: photo card on the left, form on the right (design 03 — Вход). */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 662px) minmax(0, 1fr);
+  gap: var(--space-7);
+  align-items: center;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--space-4) 32px var(--space-9);
+}
+
+/* Left card: the photo is a placeholder SVG until the mockup image is exported. */
+.hero {
+  position: relative;
+  aspect-ratio: 662 / 860;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--color-surface-muted);
+}
+
+.heroImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.heroOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(24, 48, 36, 0) 35%, rgba(24, 48, 36, 0.74) 100%);
+}
+
+.heroContent {
+  position: absolute;
+  inset: auto 0 0;
+  padding: var(--space-9);
+  color: #f7f4ea;
+}
+
+.heroKicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: rgba(247, 244, 234, 0.85);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.heroTitle {
+  margin-top: var(--space-4);
+  max-width: 14ch;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.1vw, 44px);
+  line-height: 1.15;
+}
+
+.heroText {
+  margin-top: var(--space-4);
+  max-width: 34ch;
+  color: rgba(247, 244, 234, 0.86);
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+}
+
+/* Right column: eyebrow, title, form, secondary actions. */
+.panel {
+  justify-self: center;
+  width: 100%;
+  max-width: 420px;
+}
+
+.eyebrow {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.title {
+  margin-top: var(--space-4);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-tight);
+}
+
+.subtitle {
+  margin-top: var(--space-4);
+  color: var(--color-muted);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-7);
+}
+
+.signup {
+  margin-top: var(--space-5);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.signupLink {
+  color: var(--color-ink);
+  font-weight: var(--weight-semibold);
+  cursor: default;
+}
+
+.signupLink:hover {
+  color: var(--color-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.divider {
+  margin: var(--space-6) 0 var(--space-5);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-6);
+    padding-inline: 24px;
+  }
+
+  .hero {
+    aspect-ratio: 3 / 4;
+  }
+
+  .heroContent {
+    padding: var(--space-7);
+  }
+}
+
+/* A tablet in portrait is too narrow for two columns: the form goes under the photo. */
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-8);
+  }
+
+  .hero {
+    aspect-ratio: 16 / 10;
+  }
+
+  .panel {
+    justify-self: center;
+    max-width: 480px;
+  }
+}
+
+@media (max-width: 767px) {
+  .layout {
+    gap: var(--space-8);
+    padding: var(--space-2) 20px var(--space-9);
+  }
+
+  /* Taller than 4/3: the caption over the photo needs room to stay readable. */
+  .hero {
+    aspect-ratio: 4 / 4.2;
+  }
+
+  .heroOverlay {
+    background: linear-gradient(
+      180deg,
+      rgba(24, 48, 36, 0.06) 0%,
+      rgba(24, 48, 36, 0.55) 45%,
+      rgba(24, 48, 36, 0.86) 100%
+    );
+  }
+
+  .heroContent {
+    padding: var(--space-6);
+  }
+
+  .heroTitle {
+    max-width: none;
+  }
+
+  .panel {
+    max-width: none;
+  }
+}

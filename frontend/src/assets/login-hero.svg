@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 860" role="img" aria-label="Фотография блюда: заглушка">
+  <!-- Placeholder for the photo of the login screen (frontend/design/03 — Вход.png).
+       Replace it with the exported mockup image in src/assets/; the layout does not depend
+       on the content of this file. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e9e2d2" />
+      <stop offset="0.55" stop-color="#d8d3bf" />
+      <stop offset="1" stop-color="#b9bfa6" />
+    </linearGradient>
+    <radialGradient id="plate" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#fbfaf6" />
+      <stop offset="0.82" stop-color="#efece1" />
+      <stop offset="1" stop-color="#ddd8c8" />
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" />
+    </filter>
+    <filter id="softer" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="34" />
+    </filter>
+  </defs>
+
+  <rect width="660" height="860" fill="url(#bg)" />
+
+  <!-- Window light -->
+  <ellipse cx="120" cy="120" rx="220" ry="150" fill="#fdfbf4" opacity="0.55" filter="url(#softer)" />
+  <!-- Cloth -->
+  <path d="M0 620 C 140 560 260 640 400 600 C 520 566 600 620 660 590 L660 860 L0 860 Z"
+        fill="#efeadd" opacity="0.9" />
+  <path d="M0 700 C 180 640 300 720 460 686 C 560 664 620 700 660 688 L660 860 L0 860 Z"
+        fill="#e3ddcc" opacity="0.75" />
+
+  <!-- Plate -->
+  <circle cx="345" cy="430" r="235" fill="url(#plate)" />
+  <circle cx="345" cy="430" r="185" fill="none" stroke="#cfc9b8" stroke-width="2" opacity="0.7" />
+
+  <!-- Food -->
+  <g filter="url(#soft)">
+    <ellipse cx="300" cy="420" rx="70" ry="46" fill="#c9a15f" />
+    <ellipse cx="398" cy="392" rx="62" ry="40" fill="#d9b678" />
+    <ellipse cx="360" cy="486" rx="76" ry="44" fill="#c7a45f" />
+    <circle cx="262" cy="372" r="26" fill="#b4553f" />
+    <circle cx="436" cy="452" r="22" fill="#b4553f" />
+    <circle cx="330" cy="352" r="18" fill="#a84c39" />
+    <circle cx="404" cy="500" r="20" fill="#b4553f" />
+    <ellipse cx="300" cy="500" rx="34" ry="18" fill="#6f8257" />
+    <ellipse cx="420" cy="356" rx="30" ry="16" fill="#7b8f60" />
+    <ellipse cx="356" cy="540" rx="26" ry="13" fill="#6f8257" />
+  </g>
+
+  <!-- Basil leaves -->
+  <g fill="#4f6a44" opacity="0.9">
+    <path d="M516 330 c 26 -18 54 -14 62 -2 c -20 16 -44 18 -62 2 Z" />
+    <path d="M540 356 c 24 -12 46 -6 52 4 c -18 12 -36 12 -52 -4 Z" />
+  </g>
+  <!-- Glass -->
+  <rect x="486" y="150" width="86" height="150" rx="26" fill="#f4f1e6" opacity="0.85" />
+  <rect x="486" y="150" width="86" height="60" rx="26" fill="#e7e2d2" opacity="0.9" />
+
+  <!-- Cutlery -->
+  <g stroke="#9d9a8c" stroke-width="7" stroke-linecap="round" opacity="0.85">
+    <path d="M150 470 L150 720" />
+    <path d="M126 470 L126 540" />
+    <path d="M174 470 L174 540" />
+    <path d="M552 470 L552 720" />
+  </g>
+</svg>

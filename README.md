@@ -396,9 +396,10 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 
 ## Фронтенд (React + TypeScript)
 
-Каркас клиента из задачи 3 спринта 3: проект, роутинг и две страницы-заготовки. Вёрстки и
-вызовов API пока нет — это следующие задачи ([`docs/sprint-4-plan.md`](docs/sprint-4-plan.md)),
-подробный гайд — [`docs/frontend.md`](docs/frontend.md).
+Клиент из задач 3 и 4 спринта 3: каркас, роутинг и вёрстка экранов «Вход» и «Рецепт» по макетам
+`frontend/design/`. Вызовов API пока нет — это спринт 4 ([`docs/sprint-4-plan.md`](docs/sprint-4-plan.md)),
+технический гайд — [`docs/frontend.md`](docs/frontend.md), токены и компоненты —
+[`docs/design-system.md`](docs/design-system.md).
 
 ```
 frontend/
@@ -409,36 +410,40 @@ frontend/
 ├── tsconfig*.json         # строгий TypeScript, отдельно приложение и конфиг
 ├── eslint.config.js       # flat config: js + typescript-eslint + react-hooks + react-refresh
 ├── Dockerfile             # node:22-slim, npm ci, dev-сервер на 0.0.0.0:3000
+├── design/                # макеты 1440 px: вход, рецепт, холодильник, лента
 └── src/
     ├── app/routes.ts      # единственное место с адресами + recipePath(id)
-    ├── components/AppLayout.tsx  # шапка, навигация, <Outlet />
+    ├── styles/            # tokens.css (палитра, шкалы) + base.css
+    ├── assets/            # заглушки фото (заменяются экспортом из Figma)
+    ├── mocks/recipe.ts    # типизированный мок рецепта до появления API
+    ├── components/        # layout (шапка/подвал/каркасы), ui (Button, поля), recipe-блоки
     ├── pages/             # LoginPage, RecipePage, NotFoundPage
-    ├── __tests__/routing.test.tsx  # 8 кейсов на маршруты
-    ├── App.tsx            # только <Routes>
-    └── main.tsx           # createRoot + BrowserRouter
+    ├── __tests__/         # 25 кейсов: маршруты, вход, рецепт
+    ├── App.tsx            # <Routes> и два лейаута
+    └── main.tsx           # шрифты, токены, createRoot + BrowserRouter
 ```
 
 ```bash
 cd frontend
 npm ci
 npm run dev              # http://localhost:3000
-npm run test:run         # 8 тестов
+npm run test:run         # 25 тестов
 npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
 
 | Путь | Страница |
 |---|---|
 | `/` | перенаправление на `/login` |
-| `/login` | вход (форма-заглушка, пока без отправки) |
-| `/recipes/:recipeId` | рецепт: id берётся из адреса |
+| `/login` | вход по макету 03 (форма пока без отправки) |
+| `/recipes/:recipeId` | рецепт по макету 02 (данные из мока) |
 | `*` | страница 404 |
 
 Порт **3000** выбран не случайно: ровно этот origin стоит в `CORS_ORIGINS` (`.env.example`,
 `docker-compose.yml`), а `strictPort: true` не даёт Vite молча переехать на другой порт и сломать
 обращения к API. Требуется Node >= 22.12; в CI и в образе используется Node 22.
 
-Проверки фронтенда: 8 кейсов `frontend/src/__tests__/routing.test.tsx` (Vitest + Testing
-Library), `eslint`, `prettier --check`, `tsc -b`, `vite build` — всё зелёное, `dist/` собирается
-(~261 КБ JS, 83 КБ gzip).
-
-  `GET /fridge_items` и `GET /favorite_recipes` (`limit`/`offset`), остальные списки отдаются целиком.
+Вёрстка: CSS Modules + токены, шрифты Lora/Inter (variable-сборки, локально, без CDN), иконки
+`lucide-react`. Адаптив: 1440 как в макете, 1024/768 и 390 — производные раскладки без
+горизонтального скролла. Проверки фронтенда: **25 кейсов** в трёх файлах (Vitest + Testing
+Library), `eslint`, `prettier --check`, `tsc -b`, `vite build` — всё зелёное; `dist/` — 289 КБ JS
+(91,8 КБ gzip), 23,7 КБ CSS (5,6 КБ gzip) и 9 файлов шрифтов.

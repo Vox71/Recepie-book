@@ -23,6 +23,15 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 python -m pytest
 ```
 
+Фронтенд — отдельный набор и отдельные команды (Node >= 22.12):
+
+```bash
+cd frontend
+npm ci
+npm run test:run        # 25 кейсов, Vitest + Testing Library
+npm run typecheck && npm run lint && npm run format:check && npm run build
+```
+
 Настройки живут в `backend/pyproject.toml`: `[tool.coverage.run]` (`source = ["app"]`,
 `branch = true`) и `[tool.coverage.report]` (`fail_under = 80`, `show_missing = true`).
 `source = app` значит, что в метрику попадает только код приложения — тесты, `conftest.py`,
@@ -170,6 +179,21 @@ python -m pytest
 
 Сеть в тестах не используется вообще: страницы лежат фикстурами, а загрузчик принимает подставной
 `opener` — тот же приём, что у скачивания датасета с Kaggle.
+### 2.10 Спринт 3, задачи 3–4: клиент (8 → 25 кейсов, отдельный набор)
+
+Фронтенд тестируется отдельным набором (`frontend/`, Vitest 5 + Testing Library + jsdom) и **не
+входит** в покрытие `app/`: это другой язык и другой инструмент измерения, смешивать проценты
+некорректно.
+
+- 25 кейсов в трёх файлах: 9 маршрутизации, 6 страницы входа, 10 страницы рецепта;
+- сеть не используется: `MemoryRouter` задаёт адрес в памяти, `fetch` не вызывается вовсе, клики —
+  `@testing-library/user-event`;
+- порог покрытия для клиента пока не задан: кроме разметки и одного локального toggle в коде нет
+  логики, процент не измеряет ничего полезного. Порог появится вместе с API-клиентом (спринт 4).
+- проверки в CI: `eslint`, `prettier --check`, `tsc -b`, `vitest run`, `vite build` — отдельный
+  workflow `Frontend CI` на Node 22.
+
+
 
 ## 3. Уровни тестирования (ГОСТ Р 56920-2016 / ISO/IEC/IEEE 29119-1)
 
