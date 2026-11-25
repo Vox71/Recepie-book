@@ -9,6 +9,7 @@ export const ROUTES = {
   home: '/',
   login: '/login',
   recipe: '/recipes/:recipeId',
+  fridge: '/fridge',
   notFound: '*',
 } as const;
 

@@ -4,15 +4,16 @@
 (`backend/tests/`, `pytest`) и фронтенда (`frontend/src/__tests__/`, `vitest`), и того, что именно
 проверяет каждый кейс.
 
-**Состав набора:** **151 кейс в 16 файлах** на бэкенде (подробно ниже) и **29 кейсов** на
-фронтенде (раздел «Фронтенд» в конце). 80 бэкендовых кейсов работают без базы (проверка входных
+**Состав набора:** **159 кейсов в 16 файлах** на бэкенде (подробно ниже) и **49 кейсов** на
+фронтенде (раздел «Фронтенд» в конце). 85 бэкендовых кейсов работают без базы (проверка входных
 данных, работа с токеном, служебные адреса, сам контракт `openapi.yaml`, компоненты ML-модуля,
 словарь аллергенов и его метрики, модель рекомендаций v1 и метрики ранжирования, разбор датасета
-и CLI импорта, разбор страниц рецептов на сохранённых страницах), 71 — против реальной PostgreSQL
-(включая саму схему БД, тела ответов, сверенные со схемами контракта, таймеры и обогащение
-рецептов со страниц). На каждый адрес из
-`openapi.yaml` приходится 1–3 кейса; адресов теперь 25 — три из них про избранное
-(`/favorite_recipes`), три — про таймеры (`/timers`, `/timers/active`, `/timers/{id}`). Модуль
+и CLI импорта, разбор страниц рецептов на сохранённых страницах), 74 — против реальной PostgreSQL
+(включая саму схему БД, тела ответов, сверенные со схемами контракта, таймеры, холодильник
+пользователя и обогащение рецептов со страниц). На каждый адрес из
+`openapi.yaml` приходится 1–3 кейса; адресов теперь 29 — три из них про избранное
+(`/favorite_recipes`), три — про таймеры (`/timers`, `/timers/active`, `/timers/{id}`), четыре —
+про личный холодильник (`/profile/fridge` и его delete-варианты). Модуль
 рекомендаций по-прежнему включается флагом
 `SMART_RECOMMENDATIONS_ENABLED` внутри `GET /recommend_recipes`
 (`tests/test_smart_recommendations.py`), а импорт датасета и обучение модели — это CLI, а не
@@ -33,7 +34,7 @@ TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/mydatabase \
 # фронтенд (Node >= 22.12)
 cd ../frontend
 npm ci
-npm run test:run                 # 29 cases, vitest
+npm run test:run                 # 47 cases, vitest
 npm run test:coverage            # те же кейсы + покрытие и порог 80 %
 npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
@@ -51,7 +52,7 @@ npm run typecheck && npm run lint && npm run format:check && npm run build
 | `tests/test_auth.py` | 6 | 4 | 2 | регистрация, вход, проверка токена |
 | `tests/test_recipes.py` | 11 | 0 | 11 | CRUD рецептов, пагинация списка, поля карточки рецепта, время приготовления, шаги/КБЖУ разобранного рецепта |
 | `tests/test_favorites.py` | 4 | 0 | 4 | избранное: JWT, порядок, идемпотентность |
-| `tests/test_fridge.py` | 7 | 1 | 6 | холодильник, пагинация списка и удаление просроченного, сериализация `last_added` |
+| `tests/test_fridge.py` | 11 | 1 | 10 | холодильник: публичные и личные `/profile/fridge`, пагинация, владелец из токена, удаление просроченного |
 | `tests/test_user_preferences.py` | 2 | 1 | 1 | аллергии и предпочтения |
 | `tests/test_notifications_recommendations.py` | 6 | 1 | 5 | уведомления и рекомендации |
 | `tests/test_database.py` | 11 | 0 | 11 | схема БД, ограничения, триггеры, таблицы без адресов |
@@ -60,7 +61,7 @@ npm run typecheck && npm run lint && npm run format:check && npm run build
 | `tests/test_smart_recommendations.py` | 3 | 0 | 3 | `GET /recommend_recipes` с флагом и без него |
 | `tests/test_allergens.py` | 16 | 13 | 3 | словарь аллергенов, ложные срабатывания, метрики, фильтр по `recipe_ingredients`, границы фильтра |
 | `tests/test_recommendation_model.py` | 9 | 8 | 1 | модель v1: веса IDF, артефакт, откат на заглушку, метрики ранжирования, CLI |
-| `tests/test_openapi_contract.py` | 22 | 17 | 5 | сам контракт: валидность по спецификации, маршруты и лимиты из файла, тела реальных ответов по схемам (включая таймеры и разобранный рецепт) |
+| `tests/test_openapi_contract.py` | 26 | 21 | 5 | сам контракт: валидность по спецификации, маршруты и лимиты из файла, тела реальных ответов по схемам (включая таймеры, личный холодильник и разобранный рецепт) |
 | `tests/test_timers.py` | 11 | 1 | 10 | таймеры: время рецепта, дедлайн из базы, список активных, изоляция по токену, отмена, лимиты |
 | `tests/test_importer_pages.py` | 23 | 19 | 4 | разбор страницы povarenok: шаги, время, порции, КБЖУ, cp1251, ошибки сети, кэш, идемпотентность обогащения |
 | **Всего** | **151** | **80** | **71** | |
@@ -500,7 +501,7 @@ CI на PostgreSQL 15: там доступность базы контролир
   использование и завершается с кодом 0: документированная точка входа работает, а не только
   `app.importer.cli`.
 
-### `tests/test_openapi_contract.py` — 22 кейса (17 без БД)
+### `tests/test_openapi_contract.py` — 26 кейсов (21 без БД)
 
 Проверяет не поведение отдельного адреса, а сам контракт: файл, его соответствие коду и тела
 ответов. Единственный файл набора, который открывает `openapi.yaml`.
@@ -589,17 +590,18 @@ CI на PostgreSQL 15: там доступность базы контролир
 
 # Фронтенд (Vitest + Testing Library)
 
-Спринт 3, задачи 3–5. Тесты живут рядом с кодом (`frontend/src/__tests__/`), не ходят в сеть и не
+Спринт 3, задачи 3–5, плюс ветка `feat/fridge-auth` (API-клиент, авторизация и страница
+холодильника). Тесты живут рядом с кодом (`frontend/src/__tests__/`), не ходят в сеть и не
 поднимают браузер: адрес задаётся `MemoryRouter`, DOM даёт jsdom, клик —
-`@testing-library/user-event`.
+`@testing-library/user-event`, `fetch` подменяется в тестах страниц.
 
 Запуск:
 
 ```bash
 cd frontend
 npm ci
-npm run test:run        # 29 passed, 5 файлов
-npm run test:coverage   # те же 29 + покрытие и порог 80 %
+npm run test:run        # 49 passed, 7 файлов
+npm run test:coverage   # те же 47 + покрытие и порог 80 %
 ```
 
 ## Покрытие и порог (задача 5)
@@ -607,34 +609,41 @@ npm run test:coverage   # те же 29 + покрытие и порог 80 %
 - Провайдер `@vitest/coverage-v8` 5.1.0, настройки — `coverage` в `frontend/vite.config.ts`;
 - порог **80 %** по statements, branches, functions и lines; тот же шаг в CI
   (`Unit tests and coverage (vitest)`), поэтому просадка ломает сборку;
-- измерено 13.11.2026: **100 %** по всем четырём метрикам на 17 файлах `src/**/*.{ts,tsx}`;
+- измерено 25.11.2026: **93,14 % statements, 85,80 % branches, 98,90 % functions, 92,80 % lines**
+  на 22 файлах `src/**/*.{ts,tsx}` (ветка `feat/fridge-auth`);
 - вне измерения и с обоснованием: `src/main.tsx` (bootstrap), `src/vite-env.d.ts` (типы),
   `src/test/**` (обвязка), `src/mocks/**` (данные), `src/assets/**`, сами тесты;
 - 100 % — это про TS/TSX, а не про «интерфейс проверен»: CSS, доступность, кросс-браузерность и
   визуал остаются за ручной сверкой (см. `docs/test-coverage.md` §2.11 и §8).
 
-## `routing.test.tsx` — 9 кейсов
+## `routing.test.tsx` — 13 кейсов
 
 | Кейс | Что проверяет |
 |---|---|
 | `renders the login page at /login` | по `/login` рендерится вход: заголовок «С возвращением!», поле Email с `type=email`, поле пароля с `type=password` |
 | `passes the recipe id from the address to the recipe page` | `/recipes/42` → заголовок рецепта и `data-recipe-id="42"` на контейнере, то есть параметр маршрута доходит до страницы |
 | `does not render the login form on the recipe page` | на странице рецепта нет формы входа (маршруты не накладываются) |
-| `redirects / to the login page` | `/` — не пустой экран, а `Navigate` на `/login` |
+| `redirects / to the fridge for a signed-in user` | `/` с токеном ведёт на `/fridge` |
+| `redirects / to the login page for a guest` | `/` без токена ведёт на `/login` |
 | `renders the 404 page for an unknown address` | `/no-such-page` → 404 и ссылка «Перейти ко входу» с `href="/login"` |
 | `renders the 404 page when the recipe id is missing` | `/recipes/` без параметра уходит на 404, а не показывает пустой рецепт |
-| `navigates from the recipe page to the login page by the logo` | клик по логотипу с `/recipes/42` возвращает на вход |
+| `navigates from the recipe page to the fridge by the logo` | клик по логотипу с `/recipes/42` открывает холодильник |
 | `keeps the login frame without the navigation` | на входе есть шапка и подвал макета 03, но нет пилюль-навигации |
 | `keeps the signed-in frame with the navigation and the footer` | на странице рецепта есть навигация и трёхколоночный подвал |
+| `logs out from the header and returns to the login screen` | кнопка «Выйти» очищает токен и показывает вход |
+| `renders the fridge page for a signed-in user` | `/fridge` открывает «Мой холодильник», ссылка навигации имеет `aria-current="page"` |
+| `redirects an unauthenticated visitor to the login screen` | без токена `/recipes/42` показывает вход, а не рецепт |
 
-## `login-page.test.tsx` — 6 кейсов
+## `login-page.test.tsx` — 8 кейсов
 
 | Кейс | Что проверяет |
 |---|---|
 | `shows the greeting, the subtitle and the form` | заголовок «С возвращением!», подзаголовок и кнопка «Войти» с `type=submit` |
 | `shows the promises of the hero card` | надпись, заголовок и абзац поверх фотокарточки — как в макете |
 | `switches the password visibility and reports the state` | toggle меняет `type` поля, `aria-pressed` и доступное имя («Показать пароль» ↔ «Скрыть пароль») |
-| `does not leave the page on submit (there is no API yet)` | заполненная форма по «Войти» остаётся на странице: запрос не отправляется |
+| `logs in, stores the token and opens the fridge` | `POST /login` возвращает токен, он попадает в `localStorage`, открывается `/fridge` |
+| `shows a readable message when the credentials are wrong` | 401 → «Неверный email или пароль», токен не сохраняется |
+| `shows the server error when login fails for another reason` | 500 → текст ошибки API в `role="alert"` |
 | `marks both registration controls as unavailable` | обе кнопки «Создать аккаунт» (в шапке и под формой) с `aria-disabled="true"` |
 | `shows the footer of the login screen` | копирайт, фраза подвала и подпись под разделителем |
 
@@ -650,8 +659,32 @@ npm run test:coverage   # те же 29 + покрытие и порог 80 %
 | `links the source of the idea in a new tab safely` | ссылка BBC Good Food: `href`, `target="_blank"`, `rel` с `noopener` и `noreferrer` |
 | `toggles the favourite button locally and reports the state` | кнопка «В избранное» переключает `aria-pressed` (локально, без API) |
 | `shows the breadcrumbs with the current recipe` | крошки с названием рецепта и отключённой «Лентой рецептов» |
-| `marks the feed as the current section of the navigation` | три пункта навигации, «Лента» подсвечена, «Избранное» с `aria-disabled` |
+| `marks the feed as the current section of the navigation` | «Лента» подсвечена, «Мой холодильник» — ссылка `/fridge`, «Избранное» с `aria-disabled` |
 | `shows the footer of the signed-in screens` | трёхколоночный подвал с девизом и годом |
+
+## `fridge-page.test.tsx` — 12 кейсов
+
+| Кейс | Что проверяет |
+|---|---|
+| `shows the title, the summary and the products of the signed-in user` | заголовок, три счётчика (3 / 1 / 1), три продукта и их статусы |
+| `filters the products by their status` | «Скоро истекают», «Просроченные» и «Все» оставляют нужные карточки |
+| `shows an empty state when the filter has no matches` | пустой результат фильтра даёт понятный текст |
+| `adds a product through the protected endpoint` | форма добавляет продукт, список обновляется |
+| `deletes one product` | кнопка «Удалить …» убирает строку |
+| `removes only expired products` | удаляется «Сыр», свежие продукты остаются |
+| `returns to the login screen when the token is rejected` | 401 сбрасывает токен и возвращает на вход |
+| `shows a load error and retries` | 500 → `role="alert"`, «Повторить» перезагружает список |
+| `shows an empty fridge` | пустой массив → «В холодильнике пока пусто…» |
+| `shows a hint when nothing is expiring soon` | блок «Сначала используйте» показывает подсказку |
+| `shows the API error of the add form and closes it on cancel` | 400 в форме виден, «Отмена» закрывает форму |
+| `shows an error when a product cannot be deleted` | 400 при удалении виден пользователю |
+
+## `fridge-status.test.ts` — 2 кейса
+
+| Кейс | Что проверяет |
+|---|---|
+| `counts whole days and classifies fresh, soon and expired products` | `daysUntil` и `getFridgeStatus` на границах 0 / +2 / +3 / −1 |
+| `formats the date and the hint in Russian` | «27 ноября», «сегодня», «завтра», «через 2 дня», «просрочен 11 дней назад» |
 
 ## `routes.test.ts` — 2 кейса (задача 5)
 
@@ -667,8 +700,7 @@ npm run test:coverage   # те же 29 + покрытие и порог 80 %
 | `renders a button without an icon` | ветка `Button` без иконки: доступное имя — текст, лишних элементов нет |
 | `hides the allergen notice when the recipe has no allergens` | карточка без аллергенов не рисует пустую персиковую плашку |
 
-**Проверено 13.11.2026** на ветке `test/frontend-coverage`: `npm run test:coverage` — **29/29**,
-покрытие **100 %** по statements/branches/functions/lines при пороге 80 %; проверено, что завышенный
-порог валит прогон (`--coverage.thresholds.statements=101` → exit 1). `typecheck`, `lint`,
-`format:check`, `build` — код 0; `npm ci` из lock-файла; dev-сервер отвечает 200 на `/login`,
-`/recipes/42`, `/no-such-page`; скриншоты headless Firefox на 1440/1024/768/390 сверены с макетами.
+**Проверено 25.11.2026** на ветке `feat/fridge-auth`: `npm run test:coverage` — **49/49**,
+покрытие **93,14 % statements, 85,80 % branches, 98,90 % functions, 92,80 % lines** при пороге
+80 %; `typecheck`, `lint`, `format:check`, `build` — код 0; `fetch` в тестах подменяется, сеть
+не используется.

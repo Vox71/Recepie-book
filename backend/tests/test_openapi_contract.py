@@ -40,7 +40,12 @@ CONTRACT_PATH = Path(__file__).resolve().parents[2] / "openapi.yaml"
 CONTRACT_URI = "urn:recipe-book:openapi"
 HTTP_METHODS = {"get", "put", "post", "delete", "patch", "head", "options", "trace"}
 # Every address of openapi.yaml that takes ?limit=&offset= (CONTRIBUTION.md §4).
-PAGINATED_ROUTES = [("/recipes", "get"), ("/favorite_recipes", "get"), ("/fridge_items", "get")]
+PAGINATED_ROUTES = [
+    ("/recipes", "get"),
+    ("/favorite_recipes", "get"),
+    ("/fridge_items", "get"),
+    ("/profile/fridge", "get"),
+]
 RECIPE_PAYLOAD = {
     "name": "Contract soup",
     "ingredients": "Картофель — 3 шт., Соль",
@@ -220,6 +225,10 @@ def test_the_pagination_limits_match_the_application_constants():
     [
         ("get", "/protected", {}, 401, None),
         ("get", "/favorite_recipes", {}, 401, None),
+        ("get", "/profile/fridge", {}, 401, None),
+        ("post", "/profile/fridge", {"json": {"product_name": "milk"}}, 401, None),
+        ("delete", "/profile/fridge/expired", {}, 401, None),
+        ("delete", "/profile/fridge/1", {}, 401, "/profile/fridge/{id}"),
         ("get", "/notify_expired", {}, 401, None),
         ("post", "/timers", {"json": {"recipe_id": 1}}, 401, None),
         ("get", "/timers/active", {}, 401, None),
@@ -297,6 +306,31 @@ def test_favorites_fridge_and_notification_answers_match_the_contract(
     # relative to the database clock, so the answer does not depend on the test process.
     add_relative_fridge_items(user_id, "Молоко", -3)
     assert_matches_contract(db_client.get("/fridge_items"), "/fridge_items", "get")
+
+    # The personal fridge of the same user: the token decides the owner.
+    personal = db_client.get("/profile/fridge", headers=headers)
+    assert_matches_contract(personal, "/profile/fridge", "get")
+    created = db_client.post(
+        "/profile/fridge",
+        json={
+            "product_name": "Кефир",
+            "expiration_date": (date.today() + timedelta(days=5)).isoformat(),
+            "quantity": 2,
+        },
+        headers=headers,
+    )
+    assert_matches_contract(created, "/profile/fridge", "post")
+    item_id = created.get_json()["id"]
+    assert_matches_contract(
+        db_client.delete(f"/profile/fridge/{item_id}", headers=headers),
+        "/profile/fridge/{id}",
+        "delete",
+    )
+    assert_matches_contract(
+        db_client.delete("/profile/fridge/expired", headers=headers),
+        "/profile/fridge/expired",
+        "delete",
+    )
 
     extra = [
         {

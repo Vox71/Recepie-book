@@ -69,6 +69,11 @@ docker compose logs -f frontend
 ```
 src/
 ├── app/routes.ts              # единственное место с адресами + recipePath(id)
+├── api/                        # fetch-обёртка, /login и /profile/fridge
+│   ├── client.ts               # VITE_API_URL, Authorization, ApiError
+│   ├── auth.ts                 # POST /login
+│   └── fridge.ts               # GET/POST/DELETE /profile/fridge
+├── auth/                       # AuthProvider, useAuth, RequireAuth
 ├── styles/
 │   ├── tokens.css             # палитра, типографика, отступы, радиусы, брейкпоинты
 │   └── base.css               # reset, body, focus-visible, .sr-only
@@ -78,14 +83,16 @@ src/
 │   ├── layout/                # SiteHeader, SiteFooter, AuthLayout, AppLayout
 │   ├── brand/Logo.tsx         # плитка с глифом + серифный вордмарк
 │   ├── ui/                    # Button, TextField, PasswordField
+│   ├── fridge/                # FridgeSummary, ProductCard, AddProductForm, expiry rules
 │   └── recipe/                # Breadcrumbs, RecipeHero, IngredientsCard, StepsList
 ├── pages/
-│   ├── LoginPage.tsx          # /login: макет 03, форма без отправки
+│   ├── LoginPage.tsx          # /login: макет 03 + POST /login
+│   ├── FridgePage.tsx         # /fridge: продукты текущего пользователя
 │   ├── RecipePage.tsx         # /recipes/:recipeId: макет 02 на моке
 │   └── NotFoundPage.tsx       # *: 404 в каркасе после входа
-├── test/setup.ts              # jest-dom + очистка DOM между тестами
-├── __tests__/                 # routing, login-page, recipe-page
-├── App.tsx                    # только <Routes> и два лейаута
+├── test/setup.ts              # jest-dom + очистка DOM и localStorage между тестами
+├── __tests__/                 # routing, login, recipe, fridge, expiry rules, API
+├── App.tsx                    # <AuthProvider>, <Routes>, защищённый AppLayout
 ├── main.tsx                   # шрифты, токены, createRoot + BrowserRouter
 └── vite-env.d.ts              # типы import.meta.env от Vite
 ```
@@ -100,9 +107,20 @@ src/
 | Путь | Компонент | Каркас | Поведение |
 |---|---|---|---|
 | `/` | `<Navigate to="/login" replace />` | — | главной пока нет |
-| `/login` | `LoginPage` | `AuthLayout` | макет 03: форма без отправки |
-| `/recipes/:recipeId` | `RecipePage` | `AppLayout` | макет 02: id из адреса, данные из мока |
-| `*` | `NotFoundPage` | `AppLayout` | 404 со ссылкой на вход |
+| `/login` | `LoginPage` | `AuthLayout` | макет 03: `POST /login`, токен в `localStorage`, переход на `/fridge` |
+| `/recipes/:recipeId` | `RecipePage` | `AppLayout` (под защитой) | макет 02: id из адреса, данные из мока |
+| `/fridge` | `FridgePage` | `AppLayout` (под защитой) | `GET/POST/DELETE /profile/fridge`; продукты только из токена |
+| `*` | `NotFoundPage` | `AppLayout` (под защитой) | 404 со ссылкой на вход |
+
+`/recipes/:recipeId`, `/fridge` и 404 обёрнуты в `RequireAuth`: без токена пользователь
+попадает на `/login`, а после входа возвращается на запрошенный адрес.
+
+### Авторизация и токен
+
+`AuthProvider` (`src/auth/AuthContext.tsx`) хранит JWT в `localStorage` под ключом
+`recepie-book.token`; `apiRequest` добавляет `Authorization: Bearer <token>` ко всем запросам.
+Любой ответ 401 в защищённом интерфейсе очищает токен и возвращает на `/login`. Пароль нигде не
+хранится; после выхода остаётся только гость.
 
 Пять шагов для новой страницы:
 
@@ -118,20 +136,21 @@ src/
 
 ## 6. Тесты
 
-**29 кейсов в пяти файлах**, все без сети и без браузера (`MemoryRouter` + jsdom):
+**49 кейсов в семи файлах**, все без сети и без браузера (`MemoryRouter` + jsdom; `fetch`
+подменяется в тестах самих страниц):
 
-- `routing.test.tsx` (9) — `/login` открывает вход, `/recipes/42` передаёт id, на рецепте нет формы
-  входа, `/` перенаправляет, неизвестный адрес и `/recipes/` без id дают 404, логотип ведёт на
-  вход, у каждого каркаса своя шапка/подвал и навигация;
-- `login-page.test.tsx` (6) — заголовок и копирайт макета, обещания фотокарточки, переключение
-  видимости пароля (`type` + `aria-pressed` + имя кнопки), отправка не уводит со страницы,
-  две кнопки «Создать аккаунт» помечены `aria-disabled`, подвал;
-- `recipe-page.test.tsx` (10) — заголовок и мета (25 минут / Легко / 2 порции), плашка «5 из 7»,
-  семь ингредиентов со статусами и количествами, аллергены, четыре шага по порядку с временем,
-  ссылка на источник (`href`, `target`, `rel`), избранное (`aria-pressed`), крошки, навигация,
-  подвал;
+- `routing.test.tsx` (13) — `/login`, `/recipes/42`, `/fridge`, `/`, 404, логотип,
+  шапка/подвал, редирект неавторизованного пользователя;
+- `login-page.test.tsx` (8) — макет, переключение пароля, успешный `POST /login`
+  (токен + переход на холодильник), 401 и 500 с понятными сообщениями, подвал;
+- `recipe-page.test.tsx` (10) — заголовок и мета, ингредиенты, аллергены, шаги,
+  источник, избранное, крошки, навигация (холодильник — рабочая ссылка), подвал;
+- `fridge-page.test.tsx` (12) — сводка, список, фильтры, пустые состояния, добавление,
+  удаление, удаление просроченных, ошибки загрузки/добавления/удаления, 401;
+- `fridge-status.test.ts` (2) — статусы «свежий/скоро/просрочен», дата и подсказки;
 - `routes.test.ts` (2) — `recipePath()`: адрес из id и экранирование спецсимволов;
 - `components.test.tsx` (2) — `Button` без иконки, карточка ингредиентов без аллергенов.
+
 
 Покрытие измеряется и проверяется в CI:
 
@@ -139,7 +158,7 @@ src/
 npm run test:coverage   # Vitest v8, порог 80 % (statements/branches/functions/lines)
 ```
 
-Измерено 13.11.2026: **100 %** по всем четырём метрикам на 17 файлах `src/**/*.{ts,tsx}`;
+Измерено 25.11.2026: **93,14 % statements, 85,80 % branches, 98,90 % functions, 92,80 % lines**;
 `main.tsx`, `test/**`, `mocks/**`, `assets/**`, `vite-env.d.ts` и сами тесты исключены — причины
 и оговорка «100 % ≠ UI проверен» в [`docs/test-coverage.md`](test-coverage.md) §2.11.
 
@@ -158,7 +177,7 @@ npm run test:coverage   # Vitest v8, порог 80 % (statements/branches/functi
 
 ## 8. Границы задач 3 и 4
 
-Задача 3 — каркас и роутинг, задача 4 — вёрстка двух экранов. Вызовы API, авторизация, экран
-таймеров и остальные страницы — спринт 4 ([`docs/sprint-4-plan.md`](sprint-4-plan.md)). Бэкенд при
-этом уже готов: `POST /timers`, `GET /timers/active`, `DELETE /timers/{id}` и схема `Timer` из
-`openapi.yaml`, а алгоритм отсчёта зафиксирован в [`docs/timer.md`](timer.md) §5.
+Задача 3 — каркас и роутинг, задача 4 — вёрстка двух экранов. Ветка `feat/fridge-auth`
+добавила API-клиент, авторизацию, защиту маршрутов и страницу «Мой холодильник»:
+`POST /login`, `GET/POST/DELETE /profile/fridge`, токен в `localStorage`. Остальные страницы
+(лента, избранное, таймеры) — следующие задачи спринта 4 ([`docs/sprint-4-plan.md`](sprint-4-plan.md)).

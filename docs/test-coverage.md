@@ -6,9 +6,9 @@
 (что именно проверяет каждый кейс) и `TASKS-REPORT.md` (что сделано по задачам).
 
 Все числа ниже **измерены**, а не взяты из головы:
-- бэкенд — прогон 12.11.2026 на ветке `feat/recipe-pages`: 151 кейс против PostgreSQL 15
+- бэкенд — прогон 25.11.2026 на ветке `feat/fridge-auth`: 159 кейсов против PostgreSQL 15
   (контейнер Docker, база `recipes_test`), `coverage.py` 7.5.3, Python 3.12 локально / 3.11 в CI;
-- фронтенд — прогон 13.11.2026 на ветке `test/frontend-coverage`: 29 кейсов, Vitest 5.1.0 +
+- фронтенд — прогон 25.11.2026 на ветке `feat/fridge-auth`: 49 кейсов, Vitest 5.1.0 +
   `@vitest/coverage-v8` 5.1.0, jsdom, Node 26 локально / 22 в CI.
 
 ## 1. Как воспроизвести
@@ -30,7 +30,7 @@ python -m pytest
 ```bash
 cd frontend
 npm ci
-npm run test:run        # 29 кейсов, Vitest + Testing Library
+npm run test:run        # 49 кейсов, Vitest + Testing Library
 npm run test:coverage   # то же под покрытием и с порогом 80 %
 npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
@@ -195,24 +195,24 @@ npm run typecheck && npm run lint && npm run format:check && npm run build
   workflow `Frontend CI` на Node 22;
 - измерение покрытия и порог добавлены задачей 5 — см. 2.11.
 
-### 2.11 Спринт 3, задача 5: покрытие фронтенда и порог (25 → 29 кейсов)
+### 2.11 Спринт 3, задача 5 и ветка `feat/fridge-auth`: покрытие фронтенда (25 → 49 кейсов)
 
 Провайдер — `@vitest/coverage-v8` 5.1.0 (peer-версия совпадает с Vitest 5.1.0), команда
 `npm run test:coverage`, настройки — в `frontend/vite.config.ts` (`coverage`), порог — **80 %** по
 statements, branches, functions и lines. Шаг CI `Unit tests and coverage (vitest)` в
 `.github/workflows/frontend-ci.yml` запускает именно её, поэтому просадка покрытия ломает сборку.
 
-| Метрика | Измерено 13.11.2026 | Порог | Статус |
+| Метрика | Измерено 25.11.2026 | Порог | Статус |
 |---|---|---|---|
-| Покрытие строк (statements) | **100 %** | ≥ 80 % | ✅ |
-| Покрытие ветвей (branches) | **100 %** | ≥ 80 % | ✅ |
-| Покрытие функций (functions) | **100 %** | ≥ 80 % | ✅ |
-| Покрытие строк (lines) | **100 %** | ≥ 80 % | ✅ |
-| Кейсов в наборе | 29 (5 файлов) | — | ✅ |
+| Покрытие строк (statements) | **93,14 %** | ≥ 80 % | ✅ |
+| Покрытие ветвей (branches) | **85,80 %** | ≥ 80 % | ✅ |
+| Покрытие функций (functions) | **98,90 %** | ≥ 80 % | ✅ |
+| Покрытие строк (lines) | **92,80 %** | ≥ 80 % | ✅ |
+| Кейсов в наборе | 49 (7 файлов) | — | ✅ |
 
-Что измеряется: 17 файлов `src/**/*.{ts,tsx}` — `App.tsx`, `app/routes.ts`, `components/brand` (1),
-`components/layout` (4), `components/recipe` (4), `components/ui` (3), `pages` (3). Все — по 100 %
-по всем четырём метрикам.
+Что измеряется: 22 файла `src/**/*.{ts,tsx}` — `App.tsx`, `app/routes.ts`, `api` (3), `auth` (2),
+`components/brand` (1), `components/fridge` (5), `components/layout` (4), `components/recipe` (4),
+`components/ui` (3), `pages` (4).
 
 Исключения (каждое обосновано, как `main.py`/`worker.py` в бэкенде):
 
@@ -225,11 +225,11 @@ statements, branches, functions и lines. Шаг CI `Unit tests and coverage (vi
 | `src/assets/**` | SVG-заглушки, не код |
 | `src/**/*.test.{ts,tsx}` | сами тесты |
 
-Честная оговорка: **100 % не означают, что интерфейс проверен полностью.** Метрика считается только
+Честная оговорка: **покрытие не означает, что интерфейс проверен полностью.** Метрика считается только
 по TypeScript/TSX и не покрывает CSS, фактический внешний вид, доступность и поведение в разных
 браузерах — для них остаются ручная сверка с макетами (скриншоты 1440/1024/768/390) и перечень
 пробелов в §8. Небольшой объём логики (маршруты, разметка, один toggle) объясняет, почему покрытие
-достигается 29 кейсами.
+достигается 49 кейсами.
 
 Проверка, что порог не декоративный:
 
@@ -276,7 +276,7 @@ npx vitest run --coverage --coverage.thresholds.statements=101   # exit 1
 | Мониторинг (фронтенд) | прогон на каждый PR и push в `main`, отчёт покрытия, код возврата | `.github/workflows/frontend-ci.yml` |
 | Проектирование и выполнение (фронтенд) | кейс = обещание страницы; имя кейса описывает проверяемое поведение, сеть не используется | `TEST-CHECKLIST.md` (раздел «Фронтенд»), `frontend/src/__tests__/` |
 | Окружение (фронтенд) | Node 22 в CI, Node >= 22.12 локально, Vitest + jsdom + Testing Library, `fetch` не вызывается | `frontend/package.json`, `frontend/vite.config.ts` |
-| Оценка завершения (фронтенд) | 29 кейсов, 100 % по четырём метрикам, порог 80 % проверяется в CI | §2.11, `frontend-ci.yml` |
+| Оценка завершения (фронтенд) | 49 кейсов, 93,14 / 85,80 / 98,90 / 92,80 %, порог 80 % проверяется в CI | §2.11, `frontend-ci.yml` |
 
 ## 5. Тестовая документация (ГОСТ Р 56922-2016 / 29119-3)
 

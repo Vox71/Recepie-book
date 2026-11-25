@@ -590,6 +590,150 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /profile/fridge:
+    get:
+      tags: [Fridge]
+      summary: Продукты текущего пользователя
+      description: >
+        Холодильник пользователя из токена. Чужой user_id в запросе не принимается:
+        владелец всегда берётся из JWT. Список отдаётся страницами (?limit=&offset=),
+        порядок стабильный — по expiration_date, затем по item_id.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Размер страницы
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          description: Сколько записей пропустить
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
+            default: 0
+      responses:
+        '200':
+          description: Страница продуктов текущего пользователя
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FridgeItem'
+        '400':
+          description: limit или offset не целое число либо вне допустимого диапазона
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Fridge]
+      summary: Добавить продукт в свой холодильник
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FridgeItemCreate'
+      responses:
+        '201':
+          description: Продукт добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FridgeItem'
+        '400':
+          description: >-
+            Тело не объект, нет product_name/expiration_date/quantity, quantity < 1,
+            product_name длиннее 100 или expiration_date не ISO-дата.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /profile/fridge/expired:
+    delete:
+      tags: [Fridge]
+      summary: Удалить просроченные продукты текущего пользователя
+      description: >
+        Удаляет только продукты пользователя из токена. Просроченным считается продукт,
+        у которого expiration_date меньше CURRENT_DATE; продукт со сроком «сегодня»
+        остаётся.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Просроченные продукты удалены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /profile/fridge/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    delete:
+      tags: [Fridge]
+      summary: Удалить продукт из своего холодильника
+      description: >
+        Удаляет продукт пользователя из токена. Чужой или неизвестный id — 404:
+        ответ не раскрывает, существует ли строка (то же правило, что у избранного).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Продукт удалён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Продукт не найден или принадлежит другому пользователю
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /delete_expired_products:
     delete:
       tags: [Fridge]
@@ -1092,6 +1236,21 @@ components:
         last_added:
           type: string
           format: date-time
+
+    FridgeItemCreate:
+      type: object
+      required: [product_name, expiration_date, quantity]
+      properties:
+        product_name:
+          type: string
+          maxLength: 100
+        expiration_date:
+          type: string
+          format: date
+        quantity:
+          type: integer
+          minimum: 1
+          description: Количество продукта; владелец берётся из токена, не из тела.
 
     FridgeItemInput:
       type: object

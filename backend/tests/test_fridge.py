@@ -161,6 +161,106 @@ def test_delete_expired_products_removes_only_expired_items(
     assert again.get_json() == {"message": "Deleted 0 expired product(s)"}
 
 
+def test_profile_fridge_is_scoped_to_the_token(db_client, register_user):
+    """A user sees and deletes only own items; a foreign id is the same 404."""
+    first_id, first_token = register_user(email="first@example.com")
+    second_id, second_token = register_user(email="second@example.com")
+    first_headers = {"Authorization": f"Bearer {first_token}"}
+    second_headers = {"Authorization": f"Bearer {second_token}"}
+
+    created = db_client.post(
+        "/profile/fridge",
+        json={
+            "product_name": "milk",
+            "expiration_date": TOMORROW.isoformat(),
+            "quantity": 2,
+        },
+        headers=first_headers,
+    )
+    assert created.status_code == 201
+    item = created.get_json()
+    assert item["user_id"] == first_id
+    assert item["product_name"] == "milk"
+
+    first_items = db_client.get("/profile/fridge", headers=first_headers).get_json()
+    assert [row["id"] for row in first_items] == [item["id"]]
+    assert db_client.get("/profile/fridge", headers=second_headers).get_json() == []
+
+    forbidden = db_client.delete(f"/profile/fridge/{item['id']}", headers=second_headers)
+    assert forbidden.status_code == 404
+    assert "error" in forbidden.get_json()
+
+    deleted = db_client.delete(f"/profile/fridge/{item['id']}", headers=first_headers)
+    assert deleted.status_code == 200
+    assert deleted.get_json() == {"message": f"Fridge item {item['id']} deleted"}
+    assert db_client.get("/profile/fridge", headers=first_headers).get_json() == []
+
+
+def test_profile_fridge_requires_a_token(client):
+    """All personal fridge endpoints answer 401 without a Bearer token."""
+    assert client.get("/profile/fridge").status_code == 401
+    assert client.post("/profile/fridge", json={}).status_code == 401
+    assert client.delete("/profile/fridge/1").status_code == 401
+    assert client.delete("/profile/fridge/expired").status_code == 401
+
+
+def test_add_profile_fridge_item_validates_the_payload(db_client, register_user):
+    """The personal POST accepts only product_name, expiration_date and quantity."""
+    _, token = register_user()
+    headers = {"Authorization": f"Bearer {token}"}
+    valid = {
+        "product_name": "milk",
+        "expiration_date": TOMORROW.isoformat(),
+        "quantity": 1,
+    }
+    bad_payloads = [
+        {},
+        {"product_name": "milk"},
+        {**valid, "quantity": 0},
+        {**valid, "quantity": 1.5},
+        {**valid, "product_name": "m" * 101},
+        {**valid, "expiration_date": "01.01.2026"},
+        "not an object",
+    ]
+    for payload in bad_payloads:
+        response = db_client.post("/profile/fridge", json=payload, headers=headers)
+        assert response.status_code == 400, payload
+        assert "error" in response.get_json()
+
+    # A user_id in the body is ignored: the owner still comes from the token.
+    response = db_client.post(
+        "/profile/fridge",
+        json={**valid, "user_id": 999999},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    assert response.get_json()["user_id"] != 999999
+
+
+def test_delete_profile_expired_items_affects_only_the_token_owner(
+    db_client, register_user, add_relative_fridge_items, db
+):
+    """The personal cleanup deletes own expired rows and leaves another user untouched."""
+    first_id, first_token = register_user(email="first@example.com")
+    second_id, _ = register_user(email="second@example.com")
+    add_relative_fridge_items(first_id, "old milk", -2)
+    add_relative_fridge_items(first_id, "fresh bread", 1)
+    add_relative_fridge_items(second_id, "old cheese", -2)
+
+    response = db_client.delete(
+        "/profile/fridge/expired",
+        headers={"Authorization": f"Bearer {first_token}"},
+    )
+    assert response.status_code == 200
+    assert response.get_json() == {"message": "Deleted 1 expired product(s)"}
+
+    remaining = {
+        (row["user_id"], row["product_name"])
+        for row in db.fetch_all("SELECT user_id, product_name FROM fridge_items")
+    }
+    assert remaining == {(first_id, "fresh bread"), (second_id, "old cheese")}
+
+
 def test_delete_expired_products_uses_the_database_date_as_the_boundary(
     db_client, register_user, add_relative_fridge_items, db
 ):

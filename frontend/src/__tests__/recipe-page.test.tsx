@@ -1,9 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import App from '../App';
+import { TOKEN_STORAGE_KEY } from '../auth/AuthContext';
 
 /**
  * Recipe screen (sprint 3, task 4): the layout of `frontend/design/02 — Страница
@@ -17,6 +18,10 @@ function renderRecipe(path = '/recipes/42') {
     </MemoryRouter>,
   );
 }
+
+beforeEach(() => {
+  window.localStorage.setItem(TOKEN_STORAGE_KEY, 'test-token');
+});
 
 describe('recipe page', () => {
   it('shows the title, the description and the meta row', () => {
@@ -110,10 +115,14 @@ describe('recipe page', () => {
     renderRecipe();
     const nav = screen.getByRole('navigation', { name: 'Основная навигация' });
 
-    expect(within(nav).getAllByRole('button')).toHaveLength(3);
+    expect(within(nav).getAllByRole('button')).toHaveLength(2);
     expect(within(nav).getByRole('button', { name: 'Лента' })).toHaveAttribute(
       'data-active',
       'true',
+    );
+    expect(within(nav).getByRole('link', { name: 'Мой холодильник' })).toHaveAttribute(
+      'href',
+      '/fridge',
     );
     expect(within(nav).getByRole('button', { name: 'Избранное' })).toHaveAttribute(
       'aria-disabled',

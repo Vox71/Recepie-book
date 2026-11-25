@@ -6,6 +6,7 @@ The primary key is ``item_id`` (docs/db_scheme.png); the API keeps exposing it a
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Sequence
 
 from ..db import Database
@@ -50,6 +51,44 @@ def list_user_items(db: Database, user_id: int) -> list[dict]:
         ORDER BY expiration_date, item_id
     """
     return db.fetch_all(sql, (user_id,))
+
+
+def list_user_items_page(db: Database, user_id: int, *, limit: int, offset: int) -> list[dict]:
+    """Return one page of the fridge items of ``user_id`` (stable order)."""
+    sql = f"""
+        SELECT {FRIDGE_COLUMNS}
+        FROM fridge_items
+        WHERE user_id = %s
+        ORDER BY expiration_date, item_id
+        LIMIT %s OFFSET %s
+    """
+    return db.fetch_all(sql, (user_id, limit, offset))
+
+
+def insert_item(
+    db: Database,
+    *,
+    user_id: int,
+    product_name: str,
+    expiration_date: date,
+    quantity: int,
+) -> dict:
+    """Insert one item and return the stored row (``item_id`` and ``last_added`` included)."""
+    sql = f"""
+        INSERT INTO fridge_items (user_id, product_name, expiration_date, quantity)
+        VALUES (%s, %s, %s, %s)
+        RETURNING {FRIDGE_COLUMNS}
+    """
+    return db.fetch_one(sql, (user_id, product_name, expiration_date, quantity))
+
+
+def delete_item(db: Database, item_id: int, user_id: int) -> bool:
+    """Delete one item of ``user_id``; ``False`` means it does not belong to the user."""
+    deleted = db.execute(
+        "DELETE FROM fridge_items WHERE item_id = %s AND user_id = %s",
+        (item_id, user_id),
+    )
+    return deleted > 0
 
 
 def insert_items(db: Database, items: Sequence[dict]) -> int:
