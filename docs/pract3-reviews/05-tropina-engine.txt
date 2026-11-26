@@ -7,9 +7,89 @@ PR: #[номер]
 
 ТЕКСТ PR
 --------
-Заменил словари в recommend_safe_recipes на ScoredRecipe. Поля: recipe, similarity, score,
-matched_products. matched_products теперь tuple. Сортировка и фильтр обращаются к полям, а не
-к ключам. В сервисе selected собирается через entry.recipe. outcome остался словарём.
+## Что делаю
+
+Практика 5, вариант V4.
+
+Заменил словари в `recommend_safe_recipes` на `ScoredRecipe`. Поля: `recipe`, `similarity`,
+`score`, `matched_products`. `matched_products` теперь `tuple`. Сортировка и фильтр обращаются
+к полям, а не к ключам. В сервисе `selected` собирается через `entry.recipe`. `outcome`
+остался словарём.
+
+## Какие файлы трогал
+
+- `backend/app/ml/engine.py`
+- `backend/app/services/smart_recommendation_service.py`
+- `backend/tests/test_ml_engine.py`
+- `backend/tests/test_recommendation_model.py`
+
+Область ревью: примерно 100 строк.
+
+## Было / стало
+
+Было:
+
+```text
+scored.append({
+    "recipe": row,
+    "similarity": similarity,
+    "score": similarity + FRIDGE_BONUS * share,
+    "matched_products": matched_products,
+})
+```
+
+Стало:
+
+```text
+scored.append(
+    ScoredRecipe(
+        recipe=row,
+        similarity=similarity,
+        score=similarity + FRIDGE_BONUS * share,
+        matched_products=tuple(matched_products),
+    )
+)
+```
+
+Почему так: ключи словаря нигде не проверялись, опечатка в `"score"` не была видна до запуска.
+
+Что стало лучше: у результата появились явные поля, сортировка читается как обычный текст.
+
+Сколько это стоило бы чинить потом: было 2 ч, стало 0,5 ч.
+
+## Что не менял
+
+- [x] API и коды ответов
+- [x] названия полей JSON
+- [x] таблицы и колонки БД
+- [x] поведение для тех же данных
+- [x] чужие файлы
+
+## Как проверял
+
+```bash
+cd backend
+ruff check .
+black --check .
+pytest tests/test_ml_engine.py tests/test_recommendation_model.py -q
+pytest
+```
+
+Результат: проверки прошли, тесты ML зелёные.
+
+## Ревью
+
+Ревьюер: Мокрецов Егор.
+
+- [x] первый раунд: замечания получил, ответил
+- [x] второй раунд: исправления проверили, approve
+- [x] все обсуждения закрыты
+- [x] CI зелёный
+
+## Что осталось
+
+Ничего.
+
 
 РАУНД 1
 -------
