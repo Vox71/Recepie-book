@@ -92,8 +92,8 @@ def test_knn_and_the_engine_rank_by_similarity_and_fridge_products():
     }
     best = outcome["recipes"][0]
     assert best.recipe is MILK_SOUP
-    assert best.matched_products == ["milk"]
-    assert outcome["recipes"][1].matched_products == []
+    assert best.matched_products == ["milk",]
+    assert outcome["recipes"][1].matched_products == ()
 
     limited = engine.recommend_safe_recipes(
         favourites=[MILK_SOUP, TOMATO_SALAD],
