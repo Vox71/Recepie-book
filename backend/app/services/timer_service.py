@@ -65,14 +65,16 @@ def start_timer(db: Database, user_id: int, payload: dict) -> dict:
     return {"server_time": iso_datetime(row["server_time"]), "timer": serialize_timer(row)}
 
 
+def close_expired_timers(db: Database, user_id: int) -> int:
+    """Close expired timers and return the number of closed rows."""
+    return timers_model.close_expired(db, user_id)
+
+
 def active_timers(db: Database, user_id: int) -> dict:
     """Return ``ActiveTimersResponse``: the running timers of the token owner.
 
-    Expired timers are closed here instead of by a background worker: a single UPDATE
-    keeps the table honest, is idempotent and costs nothing while no timer runs
-    (``docs/timer.md``, "почему нет воркера").
+    Expired timers are closed by the caller before this read-only function is called.
     """
-    timers_model.close_expired(db, user_id)
     rows = timers_model.list_active(db, user_id, limit=MAX_ACTIVE_TIMERS)
     # The client needs "now" even when no timer is running: it is the reference point
     # for a timer it is about to restore (openapi.yaml, ActiveTimersResponse).
