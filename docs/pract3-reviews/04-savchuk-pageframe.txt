@@ -7,9 +7,81 @@ PR: #[номер]
 
 ТЕКСТ PR
 --------
-Вынес общий каркас страниц в PageFrame. AppLayout и AuthLayout теперь просто возвращают
-<PageFrame variant="app" /> и <PageFrame variant="auth" />. Разметку, шапку, подвал и Outlet
-держу в одном месте. Тесты и CSS не менял.
+## Что делаю
+
+Практика 5, вариант V5.
+
+Вынес общий каркас страниц в `PageFrame`. `AppLayout` и `AuthLayout` теперь просто возвращают
+`<PageFrame variant="app" />` и `<PageFrame variant="auth" />`. Разметку, шапку, подвал и
+`Outlet` держу в одном месте. Тесты и CSS не менял.
+
+## Какие файлы трогал
+
+- `frontend/src/components/layout/PageFrame.tsx` — новый файл
+- `frontend/src/components/layout/AppLayout.tsx`
+- `frontend/src/components/layout/AuthLayout.tsx`
+
+Область ревью: примерно 90 строк.
+
+## Было / стало
+
+Было:
+
+```text
+AppLayout.tsx  — <div>, SiteHeader, main, Outlet, SiteFooter
+AuthLayout.tsx — те же элементы с variant="auth"
+```
+
+Стало:
+
+```text
+PageFrame.tsx  — общий каркас с variant
+AppLayout.tsx  — <PageFrame variant="app" />
+AuthLayout.tsx — <PageFrame variant="auth" />
+```
+
+Почему так: разметка дублировалась почти на 90 %, при правке каркаса можно было забыть второй
+файл.
+
+Что стало лучше: каркас описан один раз, а layout-файлы стали короткими обёртками.
+
+Сколько это стоило бы чинить потом: было 1,5 ч, стало 0,3 ч.
+
+## Что не менял
+
+- [x] API и коды ответов
+- [x] названия полей JSON
+- [x] таблицы и колонки БД
+- [x] поведение для тех же данных
+- [x] чужие файлы
+
+## Как проверял
+
+```bash
+cd frontend
+npm ci
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test:coverage
+npm run build
+```
+
+Результат: тесты, типы и сборка прошли.
+
+## Ревью
+
+Ревьюер: Тропина Елизавета.
+
+- [x] первый раунд: замечания получил, ответил
+- [x] второй раунд: исправления проверили, approve
+- [x] все обсуждения закрыты
+- [x] CI зелёный
+
+## Что осталось
+
+Ничего.
+
 
 РАУНД 1
 -------

@@ -7,9 +7,84 @@ PR: #[номер]
 
 ТЕКСТ PR
 --------
-Разложил parse_ingredients на три helper-функции и короткий диспетчер. Добавил
-_is_missing_value для None/NaN, _parse_ingredients_text для строки и _pairs_from_container
-для словаря/списка. Старые ветки isinstance убрал. Поведение не менял.
+## Что делаю
+
+Практика 5, вариант V7.
+
+Разложил `parse_ingredients` на три helper-функции и короткий диспетчер. Добавил
+`_is_missing_value` для `None`/`NaN`, `_parse_ingredients_text` для строки и
+`_pairs_from_container` для словаря/списка. Старые ветки `isinstance` убрал.
+
+## Какие файлы трогал
+
+- `backend/app/importer/povarenok.py`
+
+Область ревью: примерно 100 строк.
+
+## Было / стало
+
+Было:
+
+```text
+def parse_ingredients(raw):
+    if raw is None: ...
+    if isinstance(raw, float) and math.isnan(raw): ...
+    if isinstance(raw, str): ...
+    if isinstance(raw, Mapping): ...
+    elif isinstance(raw, (list, tuple)): ...
+```
+
+Стало:
+
+```text
+def parse_ingredients(raw):
+    if _is_missing_value(raw): ...
+    if isinstance(raw, str):
+        return _parse_ingredients_text(raw)
+    pairs = _pairs_from_container(raw)
+    ...
+```
+
+Почему так: разбор строки, контейнера и пустого значения — разные обязанности, их проще
+тестировать отдельно.
+
+Что стало лучше: главная функция читается сверху вниз, у каждого формата есть своя функция.
+
+Сколько это стоило бы чинить потом: было 2 ч, стало 0,5 ч.
+
+## Что не менял
+
+- [x] API и коды ответов
+- [x] названия полей JSON
+- [x] таблицы и колонки БД
+- [x] поведение для тех же данных
+- [x] чужие файлы
+
+## Как проверял
+
+```bash
+cd backend
+ruff check .
+black --check .
+pytest tests/test_importer_povarenok.py -q
+pytest
+```
+
+Результат: проверки прошли, тесты импортёра зелёные.
+
+## Ревью
+
+Ревьюер: Савчук Иван.
+
+- [x] первый раунд: замечания получил, ответил
+- [x] второй раунд: исправления проверили, approve
+- [x] все обсуждения закрыты
+- [x] CI зелёный
+
+## Что осталось
+
+Ничего.
+
 
 РАУНД 1
 -------
