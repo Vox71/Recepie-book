@@ -8,16 +8,16 @@
 ## Что делаем
 
 В `recommend_safe_recipes` результаты складываются в словари с ключами `"recipe"`,
-`"similarity"`, `"score"`, `"matched_products"`. Если в ключе опечатка, Python не заметит —
-получится пустое значение.
+`"similarity"`, `"score"`, `"matched_products"`. Если в ключе опечатка, Python не замечает —
+получается пустое значение.
 
-Заменяем словарь на `ScoredRecipe` с четырьмя полями. Внешний `outcome` остаётся словарём с
+Словарь заменяется на `ScoredRecipe` с четырьмя полями. Внешний `outcome` остаётся словарём с
 ключами `"recipes"` и `"stats"` — это важно, API не должен измениться.
 
 ## Как делать
 
-1. Добавь `from dataclasses import dataclass`.
-2. Перед функцией объяви:
+1. Добавляется `from dataclasses import dataclass`.
+2. Перед функцией объявляется:
 
    ```python
    @dataclass(frozen=True)
@@ -28,13 +28,13 @@
        matched_products: tuple[str, ...]
    ```
 
-3. Поменяй `scored: list[dict]` на `list[ScoredRecipe]`.
-4. Вместо `scored.append({...})` создавай `ScoredRecipe(...)`, а `matched_products` приводи к
-   `tuple`.
-5. В сортировке и фильтре замени `entry["score"]` на `entry.score`.
-6. В `smart_recommendation_service.py` замени `entry["recipe"]` на `entry.recipe`.
-7. В тестах поправь обращения к полям.
-8. Проверь:
+3. `scored: list[dict]` меняется на `list[ScoredRecipe]`.
+4. Вместо `scored.append({...})` создаётся `ScoredRecipe(...)`, а `matched_products` приводится
+   к `tuple`.
+5. В сортировке и фильтре `entry["score"]` заменяется на `entry.score`.
+6. В `smart_recommendation_service.py` `entry["recipe"]` заменяется на `entry.recipe`.
+7. В тестах поправляются обращения к полям.
+8. Выполняются проверки:
 
    ```bash
    cd backend
@@ -61,10 +61,10 @@ refactor(ml): use ScoredRecipe instead of dicts
   `ScoredRecipe`.
 - «Почему `recipe: dict`, а не отдельный тип?» — на этом шаге это строка из базы; отдельный DTO
   для рецепта — уже другая задача.
-- «Точно ли API не меняется?» — `outcome["recipes"]` внутри стал объектами, но сервис сразу
+- «Точно ли API не меняется?» — `outcome["recipes"]` внутри стал списком объектов, но сервис сразу
   превращает их обратно в `entry.recipe`; в JSON уходит то же самое.
 
-## Осторожно
+## Границы изменения
 
-Не меняй `knn.py`, `vectorizer.py`, статистику `stats` и названия полей ответа API. В тестах
+`knn.py`, `vectorizer.py`, статистика `stats` и названия полей ответа API не меняются. В тестах
 меняются только обращения к элементам результата.

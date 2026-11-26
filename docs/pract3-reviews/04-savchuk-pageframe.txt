@@ -44,7 +44,7 @@ frontend/src/components/layout/AuthLayout.tsx
 frontend/src/components/layout/AppLayout.tsx
 
 Текст:
-  Хорошо, что не стал менять SiteHeader и SiteFooter. Они уже принимают variant, так что
+  Хорошо, что SiteHeader и SiteFooter не изменены. Они уже принимают variant, так что
   PageFrame действительно только собирает каркас.
 
 Оценка после раунда 1: 8/10
