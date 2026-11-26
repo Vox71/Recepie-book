@@ -73,7 +73,7 @@ def test_knn_and_the_engine_rank_by_similarity_and_fridge_products():
         neighbours=10,
         settings=_settings(),
     )
-    assert [entry["recipe"]["recipe_name"] for entry in outcome["recipes"]] == [
+    assert [entry.recipe["recipe_name"] for entry in outcome["recipes"]] == [
         "Milk soup",  # similar to the favourites and it uses the milk of the fridge
         "Tomato salad",  # similar to the favourites (it is one of them)
         "Milk porridge",  # similar and in the fridge, but less similar than a favourite
@@ -91,9 +91,9 @@ def test_knn_and_the_engine_rank_by_similarity_and_fridge_products():
         "cold_start": False,
     }
     best = outcome["recipes"][0]
-    assert best["recipe"] is MILK_SOUP
-    assert best["matched_products"] == ["milk"]
-    assert outcome["recipes"][1]["matched_products"] == []
+    assert best.recipe is MILK_SOUP
+    assert best.matched_products == ["milk"]
+    assert outcome["recipes"][1].matched_products == []
 
     limited = engine.recommend_safe_recipes(
         favourites=[MILK_SOUP, TOMATO_SALAD],
@@ -104,7 +104,7 @@ def test_knn_and_the_engine_rank_by_similarity_and_fridge_products():
         neighbours=10,
         settings=_settings(),
     )
-    assert [entry["recipe"]["recipe_name"] for entry in limited["recipes"]] == [
+    assert [entry.recipe["recipe_name"] for entry in limited["recipes"]] == [
         "Milk soup",
         "Tomato salad",
     ]
@@ -121,7 +121,7 @@ def test_knn_and_the_engine_rank_by_similarity_and_fridge_products():
     assert cold["stats"]["cold_start"] is True
     assert cold["stats"]["candidates"] == 4
     # Recipes without a similarity and without a fridge product are not offered.
-    assert [entry["recipe"]["recipe_name"] for entry in cold["recipes"]] == [
+    assert [entry.recipe["recipe_name"] for entry in cold["recipes"]] == [
         "Milk soup",
         "Milk porridge",
     ]

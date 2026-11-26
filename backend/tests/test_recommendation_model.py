@@ -110,7 +110,7 @@ def test_engine_ranks_with_the_model_when_the_artifact_exists(tmp_path, use_mode
         settings=settings,
         model=model,
     )
-    names = [entry["recipe"]["recipe_name"] for entry in outcome["recipes"]]
+    names = [entry.recipe["recipe_name"] for entry in outcome["recipes"]]
     if use_model:
         assert outcome["stats"]["vectorizer"] == vectorizer.TFIDF_BACKEND
         assert outcome["stats"]["model_documents"] == 3
