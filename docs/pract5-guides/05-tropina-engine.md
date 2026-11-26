@@ -172,3 +172,36 @@ refactor(ml): use ScoredRecipe instead of dicts
 - `matched_products` остался списком, хотя поле объявлено tuple;
 - не все тесты обновлены, и `pytest` падает на `KeyError`;
 - в PR попали `knn.py` или `vectorizer.py`.
+
+## Правки после раунда 1
+
+Ревьюер нашёл не все обращения к словарю в тестах. Нужно проверить оба тестовых файла:
+
+```bash
+grep -RniE '\["(recipe|score|matched_products)"\]' \
+  backend/tests/test_ml_engine.py backend/tests/test_recommendation_model.py
+```
+
+В `backend/tests/test_ml_engine.py` заменить:
+
+```python
+outcome["recipes"][1]["matched_products"] -> outcome["recipes"][1].matched_products
+best["recipe"] -> best.recipe
+best["matched_products"] -> best.matched_products
+entry["recipe"] -> entry.recipe
+```
+
+В `backend/tests/test_recommendation_model.py`:
+
+```python
+entry["recipe"] -> entry.recipe
+```
+
+Поле `recipe: dict` в `ScoredRecipe` остаётся без изменений: отдельный тип для рецепта — другая
+задача. После правки:
+
+```bash
+git add backend/tests/test_ml_engine.py backend/tests/test_recommendation_model.py
+git commit -m "test(ml): use ScoredRecipe attributes"
+git push
+```

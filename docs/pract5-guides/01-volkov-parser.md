@@ -210,3 +210,22 @@ refactor(importer): extract start tag handlers
 - тело ветки скопировано, но старое не удалено — появляется двойная обработка;
 - в коммит попали тесты или чужие файлы;
 - `handle_starttag` остался длинным, потому что вынесены не все ветки.
+
+## Правки после раунда 1
+
+Ревьюер попросил добавить docstring к публичному `handle_starttag`. В коде должно быть:
+
+```python
+def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+    """Dispatch a start tag to the small handler of that tag."""
+```
+
+Если docstring уже есть, ничего дополнительно менять не нужно. Маленькие `_start_*` методы
+остаются без docstring: они короткие, а комментарий про незакрытый `li` уже есть в
+`_start_step`. После правки:
+
+```bash
+git add backend/app/importer/pages.py
+git commit -m "docs(importer): document start tag dispatcher"
+git push
+```

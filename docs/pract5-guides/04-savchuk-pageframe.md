@@ -151,3 +151,32 @@ refactor(layout): extract common page frame
 - в `AuthLayout` или `AppLayout` забыт `import PageFrame`;
 - изменены `SiteHeader`/`SiteFooter`, хотя их трогать не нужно;
 - в коммит попал `Layout.module.css`.
+
+## Правки после раунда 1
+
+Ревьюер попросил расположить тип и интерфейс рядом и вернуть пояснение про футер.
+
+В `PageFrame.tsx`:
+
+```tsx
+export type PageVariant = 'auth' | 'app';
+
+export interface PageFrameProps {
+  variant: PageVariant;
+}
+
+/**
+ * Common frame of every page: header, the page itself and the footer.
+ * The variant picks the header/footer of the login screen or of the app.
+ * The page inside <main> stretches, so the footer stays at the bottom.
+ */
+export default function PageFrame({ variant }: PageFrameProps) {
+```
+
+Если `type` и `interface` уже стоят рядом, меняется только комментарий. После правки:
+
+```bash
+git add frontend/src/components/layout/PageFrame.tsx
+git commit -m "docs(layout): explain the page frame footer"
+git push
+```

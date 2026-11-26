@@ -238,3 +238,22 @@ refactor(importer): group enrich options
 - не все вызовы в тестах обновлены;
 - в `cli.py` остался старый длинный вызов;
 - изменён `load_page` или SQL, хотя их трогать не нужно.
+
+## Правки после раунда 1
+
+Ревьюер попросил уточнить тип `opener` в `EnrichOptions`. В классе меняется одна строка:
+
+```python
+opener: Callable[..., str] = fetch_recipe_page
+```
+
+`Callable` уже импортирован в `enrich.py`. Полный протокол для `opener` не нужен: он
+используется в одном месте и тесты проверяют его вызов.
+
+После правки:
+
+```bash
+git add backend/app/importer/enrich.py
+git commit -m "refactor(importer): type enrich opener"
+git push
+```

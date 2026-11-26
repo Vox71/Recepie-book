@@ -134,3 +134,34 @@ refactor(timers): separate query from modifier
 - в `active_timers` остался старый вызов `timers_model.close_expired`;
 - изменился докстринг, но не код, или наоборот;
 - в PR попали `models/timers.py` или тесты без необходимости.
+
+## Правки после раунда 1
+
+После разделения нужно поправить два docstring.
+
+`close_expired_timers`:
+
+```python
+def close_expired_timers(db: Database, user_id: int) -> int:
+    """Close expired timers and return the number of closed rows."""
+    return timers_model.close_expired(db, user_id)
+```
+
+`active_timers`:
+
+```python
+def active_timers(db: Database, user_id: int) -> dict:
+    """Return the running timers of the user (read-only).
+
+    Expired timers are closed by the caller before this function is used.
+    """
+    rows = timers_model.list_active(db, user_id, limit=MAX_ACTIVE_TIMERS)
+```
+
+После правки:
+
+```bash
+git add backend/app/services/timer_service.py
+git commit -m "docs(timers): explain the split query and modifier"
+git push
+```
