@@ -139,3 +139,40 @@ refactor(importer): split parse_ingredients
 - изменён `_split_line` или `_decode_literal`, хотя их не трогаем;
 - в `_pairs_from_container` возвращается `[]` вместо `None` для неизвестного типа — тогда
   непонятно, это пустые данные или неподдерживаемый формат.
+
+## Правки после раунда 1
+
+Ревьюер попросил уточнить docstring и добавить тесты на новую границу.
+
+Docstring:
+
+```python
+def _pairs_from_container(raw: Any) -> list[tuple[Any, Any]] | None:
+    """Return pairs from a mapping/list/tuple.
+
+    ``None`` means an unsupported type, not an empty value: an empty mapping returns
+    an empty list.
+    """
+```
+
+Тесты в `backend/tests/test_importer_povarenok.py`:
+
+```python
+def test_parse_ingredients_accepts_a_list_of_mappings() -> None:
+    assert parse_ingredients([{"Мука": "300 г"}, {"Соль": "щепотка"}]) == (
+        Ingredient(name="Мука", quantity="300 г"),
+        Ingredient(name="Соль", quantity="щепотка"),
+    )
+
+
+def test_parse_ingredients_rejects_an_unsupported_type() -> None:
+    assert parse_ingredients(42) == ()
+```
+
+После правки:
+
+```bash
+git add backend/app/importer/povarenok.py backend/tests/test_importer_povarenok.py
+git commit -m "test(importer): cover ingredient container boundaries"
+git push
+```
