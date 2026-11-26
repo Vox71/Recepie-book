@@ -90,21 +90,21 @@ Merge
 
 ## 6. Текстовые отчёты
 
-Основной артефакт для преподавателя — `.txt`-файлы с дословными текстами PR, комментариев,
+Основной артефакт для преподавателя — Markdown-файлы с дословными текстами PR, комментариев,
 ответов и оценок. Ссылки на GitHub недостаточно.
 
 ```text
 docs/pract3-reviews/
-  01-volkov-parser.txt
-  02-zhuravlev-timer.txt
-  03-potapov-ingredients.txt
-  04-savchuk-pageframe.txt
-  05-tropina-engine.txt
-  06-mokretsov-enrich.txt
-  TEMPLATE.txt
+  01-volkov-parser.md
+  02-zhuravlev-timer.md
+  03-potapov-ingredients.md
+  04-savchuk-pageframe.md
+  05-tropina-engine.md
+  06-mokretsov-enrich.md
+  TEMPLATE.md
 
-docs/pract3-review-report.txt
-docs/pract5-report.txt
+docs/pract3-review-report.md
+docs/pract5-report.md
 ```
 
 В каждом файле PR должны быть:
@@ -118,7 +118,7 @@ docs/pract5-report.txt
 - оценки ревьюера и арбитра, если он участвовал;
 - merge commit и оставшиеся задачи.
 
-Шаблон: [`docs/pract3-reviews/TEMPLATE.txt`](pract3-reviews/TEMPLATE.txt).
+Шаблон: [`docs/pract3-reviews/TEMPLATE.md`](pract3-reviews/TEMPLATE.md).
 
 Тексты собираются после merge в отдельном docs-PR, чтобы не менять код и не сбрасывать
 approval. Автор проверяет свой файл перед merge отчёта.
@@ -204,7 +204,7 @@ npm run build
 
 После всех шести PR:
 
-- заполнить `docs/pract3-review-report.txt` и `docs/pract5-report.txt`;
+- заполнить `docs/pract3-review-report.md` и `docs/pract5-report.md`;
 - проверить `git diff --stat pract5-base..main`;
 - поставить тег `pract5-done`.
 
@@ -212,9 +212,9 @@ npm run build
 
 - Короткая инструкция студенту: [`docs/pract5-student-guide.md`](pract5-student-guide.md).
 - Шаблон PR: [`.github/pull_request_template.md`](../.github/pull_request_template.md).
-- Шаблон текстового отчёта: [`docs/pract3-reviews/TEMPLATE.txt`](pract3-reviews/TEMPLATE.txt).
-- Сводный отчёт по review: [`docs/pract3-review-report.txt`](pract3-review-report.txt).
-- Сводный отчёт pract5: [`docs/pract5-report.txt`](pract5-report.txt).
+- Шаблон текстового отчёта: [`docs/pract3-reviews/TEMPLATE.md`](pract3-reviews/TEMPLATE.md).
+- Сводный отчёт по review: [`docs/pract3-review-report.md`](pract3-review-report.md).
+- Сводный отчёт pract5: [`docs/pract5-report.md`](pract5-report.md).
 
 ## 10. Ссылки
 

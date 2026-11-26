@@ -100,7 +100,7 @@ refactor(importer): extract start tag handlers
 - оценки;
 - «было/стало» и техдолг.
 
-Шаблон: `docs/pract3-reviews/TEMPLATE.txt`.
+Шаблон: `docs/pract3-reviews/TEMPLATE.md`.
 
 ## 8. Чего делать нельзя
 
