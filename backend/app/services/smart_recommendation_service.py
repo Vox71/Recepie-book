@@ -70,7 +70,7 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
             return {"message": "No recipes match your allergies", "recipes": []}
         return {"message": "No recipes similar to your favourites were found", "recipes": []}
 
-    selected = [entry["recipe"] for entry in outcome["recipes"]]
+    selected = [entry.recipe for entry in outcome["recipes"]]
     generated_model.record_generated(db, user_id, [int(row["id"]) for row in selected])
     logger.info(
         "Smart recommendations for user %s: %s candidate(s), %s rejected by allergy, "

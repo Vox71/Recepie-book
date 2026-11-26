@@ -25,7 +25,8 @@ the log line, so the API contract stays exactly the one of ``openapi.yaml``.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Mapping, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 from ..config import Settings
 from . import allergens, knn, preprocessing, vectorizer
@@ -37,6 +38,16 @@ logger = logging.getLogger(__name__)
 
 FRIDGE_BONUS = 0.2
 """Share of the score that the fridge can add; the rest is the KNN similarity."""
+
+
+@dataclass(frozen=True)
+class ScoredRecipe:
+    """One candidate with its similarity to the profile and the final score."""
+
+    recipe: Mapping[str, Any]
+    similarity: float
+    score: float
+    matched_products: tuple[str, ...]
 
 
 def recommend_safe_recipes(
@@ -53,12 +64,8 @@ def recommend_safe_recipes(
 ) -> dict:
     """Run the pipeline and return ``{"recipes": [...], "stats": {...}}``.
 
-    Every entry of ``recipes`` is ``{"recipe": <recipes row>, "similarity": float,
-    "score": float, "matched_products": [str]}``.  ``ingredient_names`` maps a recipe id
-    onto its rows of ``recipe_ingredients``; without it the filter falls back to the
-    ``recipes.ingredients`` text (the engine itself never touches the database).
-    ``model`` is the trained TF-IDF artifact of task 6.0: when it is given, the vectors
-    weigh lemmas by IDF, otherwise the module keeps the bag-of-lemmas fallback.
+    Every entry of ``recipes`` is a ``ScoredRecipe`` with the recipe row, its
+    similarity to the profile, the final score and the matched fridge products.
     """
     sample_texts = _training_sample(favourites)
     cold_start = not sample_texts and bool(fridge_products)
@@ -73,24 +80,24 @@ def recommend_safe_recipes(
     recipe_vectors = vectors[len(sample_texts) :]
 
     nearest = knn.k_nearest(profile, recipe_vectors, k=neighbours)
-    scored: list[dict] = []
+    scored: list[ScoredRecipe] = []
     for index, similarity in nearest:
         row = safe[index]
         matched_products = _matching_products(row, fridge_products)
         share = len(matched_products) / len(fridge_products) if fridge_products else 0.0
         scored.append(
-            {
-                "recipe": row,
-                "similarity": similarity,
-                "score": similarity + FRIDGE_BONUS * share,
-                "matched_products": matched_products,
-            }
+            ScoredRecipe(
+                recipe=row,
+                similarity=similarity,
+                score=similarity + FRIDGE_BONUS * share,
+                matched_products=tuple(matched_products),
+            )
         )
 
     # A recipe without any similarity and without a fridge product is not a
     # recommendation, so it is dropped instead of padding the answer.
-    ranked = sorted(scored, key=lambda entry: entry["score"], reverse=True)
-    selected = [entry for entry in ranked if entry["score"] > 0][: max(limit, 0)]
+    ranked = sorted(scored, key=lambda entry: entry.score, reverse=True)
+    selected = [entry for entry in ranked if entry.score > 0][: max(limit, 0)]
 
     stats = {
         "favourites_used": len(_training_sample(favourites)),
