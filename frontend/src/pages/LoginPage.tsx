@@ -1,20 +1,56 @@
 import { ArrowRight, Leaf } from 'lucide-react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
+import { ApiError } from '../api/client';
+import { ROUTES } from '../app/routes';
 import loginHero from '../assets/login-hero.svg';
+import { useAuth } from '../auth/AuthContext';
 import Button from '../components/ui/Button';
 import PasswordField from '../components/ui/PasswordField';
 import TextField from '../components/ui/TextField';
 import styles from './LoginPage.module.css';
 
+interface LoginLocationState {
+  from?: string;
+}
+
 /**
- * Login screen of the mockup `frontend/design/03 — Вход.png` (sprint 3, task 4).
+ * Login screen of the mockup `frontend/design/03 — Вход.png`.
  *
- * The page is layout only: the form does not call `POST /login` yet (that is the next
- * frontend task, docs/sprint-4-plan.md), so submitting prevents the default browser
- * navigation and nothing leaves the page. The password field does work: its eye button
- * switches the input type and reports the state through `aria-pressed`.
+ * The form calls `POST /login`, stores the JWT through `AuthProvider` and returns the
+ * user to the page they tried to open.  A 401 is shown as a readable message, not as a
+ * raw API error; the password visibility toggle stays local to the field.
  */
 export default function LoginPage() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await login(email, password);
+      const state = location.state as LoginLocationState | null;
+      navigate(state?.from ?? ROUTES.fridge, { replace: true });
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        setError('Неверный email или пароль');
+      } else {
+        setError(cause instanceof Error ? cause.message : 'Не удалось войти');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className={styles.layout}>
       <section className={styles.hero} aria-label="О приложении">
@@ -41,7 +77,7 @@ export default function LoginPage() {
           Войдите, чтобы вернуться к своему холодильнику и любимым рецептам.
         </p>
 
-        <form className={styles.form} onSubmit={(event) => event.preventDefault()}>
+        <form className={styles.form} onSubmit={handleSubmit}>
           <TextField
             id="email"
             name="email"
@@ -49,6 +85,8 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             placeholder="anna@example.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             required
           />
           <PasswordField
@@ -57,10 +95,17 @@ export default function LoginPage() {
             label="Пароль"
             autoComplete="current-password"
             placeholder="••••••••"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
             required
           />
-          <Button type="submit" fullWidth icon={<ArrowRight size={18} />}>
-            Войти
+          {error ? (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          ) : null}
+          <Button type="submit" fullWidth disabled={submitting} icon={<ArrowRight size={18} />}>
+            {submitting ? 'Входим…' : 'Войти'}
           </Button>
         </form>
 

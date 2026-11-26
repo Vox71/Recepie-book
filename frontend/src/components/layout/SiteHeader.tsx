@@ -1,21 +1,12 @@
 import { ArrowRight, ChevronDown } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
 
+import { ROUTES } from '../../app/routes';
+import { useAuth } from '../../auth/AuthContext';
 import Logo from '../brand/Logo';
 import styles from './SiteHeader.module.css';
 
 export type HeaderVariant = 'auth' | 'app';
-
-/**
- * Navigation items of the mockup. The pages behind them (feed, fridge, favourites) do not
- * exist yet, so they are buttons marked `aria-disabled` instead of links to nowhere:
- * a click does nothing and a screen reader announces them as unavailable. When the pages
- * arrive, these become `<Link>` and the markup of the header does not change.
- */
-const NAV_ITEMS = [
-  { label: 'Лента', active: true },
-  { label: 'Мой холодильник', active: false },
-  { label: 'Избранное', active: false },
-] as const;
 
 const LATER = 'Раздел появится позже';
 
@@ -23,7 +14,18 @@ interface SiteHeaderProps {
   variant: HeaderVariant;
 }
 
+/**
+ * Header of both frames. The fridge link is real now; the feed and favourites are still
+ * buttons marked `aria-disabled`, because those pages do not exist. The active pill is
+ * driven by the current address (`aria-current` for the link, `data-active` for the feed).
+ */
 export default function SiteHeader({ variant }: SiteHeaderProps) {
+  const { email, logout } = useAuth();
+  const { pathname } = useLocation();
+  const feedActive = !pathname.startsWith(ROUTES.fridge);
+  const displayName = email ?? 'Аккаунт';
+  const initials = email ? email.slice(0, 2).toUpperCase() : 'АК';
+
   return (
     <header className={styles.header} data-variant={variant}>
       <div className={styles.inner}>
@@ -44,30 +46,35 @@ export default function SiteHeader({ variant }: SiteHeaderProps) {
         ) : (
           <>
             <nav className={styles.nav} aria-label="Основная навигация">
-              {NAV_ITEMS.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  className={styles.navItem}
-                  data-active={item.active ? 'true' : undefined}
-                  aria-disabled="true"
-                  title={LATER}
-                >
-                  {item.label}
-                </button>
-              ))}
+              <button
+                type="button"
+                className={styles.navItem}
+                data-active={feedActive ? 'true' : undefined}
+                aria-disabled="true"
+                title={LATER}
+              >
+                Лента
+              </button>
+              <NavLink to={ROUTES.fridge} className={styles.navItem}>
+                Мой холодильник
+              </NavLink>
+              <button type="button" className={styles.navItem} aria-disabled="true" title={LATER}>
+                Избранное
+              </button>
             </nav>
             <div className={styles.user}>
-              <span className={styles.userName}>Анна</span>
+              <span className={styles.userName} title={displayName}>
+                {displayName}
+              </span>
               <button
                 type="button"
                 className={styles.userButton}
-                aria-label="Меню пользователя Анна"
-                aria-disabled="true"
-                title="Меню пользователя появится позже"
+                onClick={logout}
+                aria-label="Выйти"
+                title="Выйти"
               >
                 <span className={styles.avatar} aria-hidden="true">
-                  АК
+                  {initials}
                 </span>
                 <ChevronDown size={16} aria-hidden="true" />
               </button>

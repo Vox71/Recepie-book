@@ -7,7 +7,7 @@ import logging
 from psycopg2 import errors as pg_errors
 
 from ..db import Database
-from ..errors import BadRequest
+from ..errors import BadRequest, NotFound
 from ..models import fridge as fridge_model
 from ..models import users as users_model
 from ..serializers import serialize_fridge_item
@@ -21,6 +21,32 @@ from ..validation import (
 logger = logging.getLogger(__name__)
 
 MAX_BATCH_SIZE = 100
+
+
+def list_user_items(db: Database, user_id: int, *, limit: int, offset: int) -> list[dict]:
+    """Return one page of the fridge of the token owner (never of another user)."""
+    rows = fridge_model.list_user_items_page(db, user_id, limit=limit, offset=offset)
+    return [serialize_fridge_item(row) for row in rows]
+
+
+def add_user_item(db: Database, user_id: int, payload: dict) -> dict:
+    """Insert one product into the fridge of ``user_id`` and return the stored item."""
+    item = _validated_user_item(payload)
+    row = fridge_model.insert_item(db, user_id=user_id, **item)
+    return serialize_fridge_item(row)
+
+
+def delete_user_item(db: Database, user_id: int, item_id: int) -> dict:
+    """Delete one item of ``user_id``; a missing or foreign item is the same 404."""
+    if not fridge_model.delete_item(db, item_id, user_id):
+        raise NotFound(f"Fridge item {item_id} not found")
+    return {"message": f"Fridge item {item_id} deleted"}
+
+
+def delete_user_expired_items(db: Database, user_id: int) -> dict:
+    """Delete only the expired products of ``user_id`` (database date is the boundary)."""
+    deleted = fridge_model.delete_expired_items(db, user_id=user_id)
+    return {"message": f"Deleted {deleted} expired product(s)"}
 
 
 def list_items(db: Database, *, limit: int, offset: int) -> list[dict]:
@@ -61,6 +87,15 @@ def delete_expired_products(db: Database) -> dict:
     """
     deleted = fridge_model.delete_expired_items(db)
     return {"message": f"Deleted {deleted} expired product(s)"}
+
+
+def _validated_user_item(raw: dict) -> dict:
+    """Validate the body of ``POST /profile/fridge``; the owner comes from the token."""
+    return {
+        "product_name": require_string(raw, "product_name", max_length=MAX_PRODUCT_NAME_LENGTH),
+        "expiration_date": require_date(raw, "expiration_date"),
+        "quantity": require_positive_int(raw, "quantity"),
+    }
 
 
 def _validated_item(raw: object, index: int) -> dict:

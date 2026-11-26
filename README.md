@@ -330,7 +330,7 @@ python -m app.ml.allergen_eval --json   # то же машинно-читаем�
 команды воспроизведения — в [docs/allergen-filter.md](docs/allergen-filter.md).
 
 
-Набор — 151 кейс в 16 файлах: по 1–3 кейса на каждый из 25 адресов (успех + отказ), отдельный
+Набор — 159 кейсов в 16 файлах: по 1–3 кейса на каждый из 29 адресов (успех + отказ), отдельный
 файл `tests/test_database.py` про саму схему БД, `tests/test_favorites.py` про избранное,
 `tests/test_timers.py` про таймеры, `tests/test_importer_pages.py` про разбор страниц povarenok,
 четыре

@@ -1,16 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import App from '../App';
+import { TOKEN_STORAGE_KEY } from '../auth/AuthContext';
 
 /**
- * Login screen (sprint 3, task 4): the layout of `frontend/design/03 — Вход.png`.
+ * Login screen: the layout of `frontend/design/03 — Вход.png` and the real `POST /login`.
  *
- * The form has no API yet, so the cases check what the page really promises today: the
- * greeting and the copy of the mockup, a working password toggle, a submit that does not
- * leave the page, and the registration control that is honestly marked as unavailable.
+ * `fetch` is replaced, so the cases check the form's promises without a network: a
+ * successful login stores the token and opens the fridge, a 401 shows a readable message,
+ * the password toggle and the disabled registration controls stay intact.
  */
 function renderLogin() {
   return render(
@@ -19,6 +20,18 @@ function renderLogin() {
     </MemoryRouter>,
   );
 }
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => JSON.stringify(body),
+  } as Response;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('login page', () => {
   it('shows the greeting, the subtitle and the form', () => {
@@ -61,15 +74,41 @@ describe('login page', () => {
     expect(password).toHaveAttribute('type', 'password');
   });
 
-  it('does not leave the page on submit (there is no API yet)', async () => {
+  it('logs in, stores the token and opens the fridge', async () => {
     const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/login')) {
+        return jsonResponse({ token: 'jwt-token' });
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
     renderLogin();
 
     await user.type(screen.getByLabelText('Email'), 'anna@example.com');
     await user.type(screen.getByLabelText('Пароль'), 'sup3r-secret');
     await user.click(screen.getByRole('button', { name: 'Войти' }));
 
+    expect(await screen.findByRole('heading', { name: 'Мой холодильник' })).toBeInTheDocument();
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('jwt-token');
+  });
+
+  it('shows a readable message when the credentials are wrong', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ error: 'Invalid email or password' }, 401)),
+    );
+    renderLogin();
+
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+    await user.type(screen.getByLabelText('Пароль'), 'wrong-password');
+    await user.click(screen.getByRole('button', { name: 'Войти' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Неверный email или пароль');
     expect(screen.getByRole('heading', { name: 'С возвращением!' })).toBeInTheDocument();
+    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
   });
 
   it('marks both registration controls as unavailable', () => {
@@ -81,6 +120,21 @@ describe('login page', () => {
     for (const control of controls) {
       expect(control).toHaveAttribute('aria-disabled', 'true');
     }
+  });
+
+  it('shows the server error when login fails for another reason', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ error: 'Server is down' }, 500)),
+    );
+    renderLogin();
+
+    await user.type(screen.getByLabelText('Email'), 'anna@example.com');
+    await user.type(screen.getByLabelText('Пароль'), 'sup3r-secret');
+    await user.click(screen.getByRole('button', { name: 'Войти' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server is down');
   });
 
   it('shows the footer of the login screen', () => {
