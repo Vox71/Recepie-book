@@ -210,6 +210,7 @@ npm run build
 
 ## 9. Шаблоны
 
+- Короткая инструкция студенту: [`docs/pract5-student-guide.md`](pract5-student-guide.md).
 - Шаблон PR: [`.github/pull_request_template.md`](../.github/pull_request_template.md).
 - Шаблон текстового отчёта: [`docs/pract3-reviews/TEMPLATE.txt`](pract3-reviews/TEMPLATE.txt).
 - Сводный отчёт по review: [`docs/pract3-review-report.txt`](pract3-review-report.txt).
