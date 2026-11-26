@@ -176,7 +176,7 @@ class _RecipeParser(HTMLParser):
         self._cell_text: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Dispatch a start tag to the small handler of that tag."""
+        """Dispatch a start Tag to the small handler of that tag."""
         data = dict(attrs)
         props = (data.get("itemprop") or "").split()
         self.itemprops.update(props)
