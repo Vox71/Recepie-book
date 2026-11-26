@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 from ..config import Settings
 from . import allergens, knn, preprocessing, vectorizer
@@ -44,7 +44,7 @@ FRIDGE_BONUS = 0.2
 class ScoredRecipe:
     """One candidate with its similarity to the profile and the final score."""
 
-    recipe: dict
+    recipe: Mapping[str, Any]
     similarity: float
     score: float
     matched_products: tuple[str, ...]
