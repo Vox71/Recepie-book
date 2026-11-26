@@ -1,50 +1,155 @@
-# Тропина Елизавета, вариант 4
+# Тропина Елизавета, вариант 4: пошаговая инструкция
 
 **Ветка:** `refactor/pract5-engine`
 
 **Файлы:** `backend/app/ml/engine.py`, `backend/app/services/smart_recommendation_service.py`,
 `backend/tests/test_ml_engine.py`, `backend/tests/test_recommendation_model.py`.
 
-## Что делаем
+**Что должно получиться:** элементы `outcome["recipes"]` — объекты `ScoredRecipe`, а не словари.
+Сам `outcome` остаётся словарём с ключами `"recipes"` и `"stats"`.
 
-В `recommend_safe_recipes` результаты складываются в словари с ключами `"recipe"`,
-`"similarity"`, `"score"`, `"matched_products"`. Если в ключе опечатка, Python не замечает —
-получается пустое значение.
+## Шаг 1. Подготовить ветку
 
-Словарь заменяется на `ScoredRecipe` с четырьмя полями. Внешний `outcome` остаётся словарём с
-ключами `"recipes"` и `"stats"` — это важно, API не должен измениться.
+```bash
+git switch main
+git pull
+git switch -c refactor/pract5-engine
+git status
+```
 
-## Как делать
+## Шаг 2. Добавить импорт и класс
 
-1. Добавляется `from dataclasses import dataclass`.
-2. Перед функцией объявляется:
+В `backend/app/ml/engine.py` рядом с `import logging` добавить:
 
-   ```python
-   @dataclass(frozen=True)
-   class ScoredRecipe:
-       recipe: dict
-       similarity: float
-       score: float
-       matched_products: tuple[str, ...]
-   ```
+```python
+from dataclasses import dataclass
+```
 
-3. `scored: list[dict]` меняется на `list[ScoredRecipe]`.
-4. Вместо `scored.append({...})` создаётся `ScoredRecipe(...)`, а `matched_products` приводится
-   к `tuple`.
-5. В сортировке и фильтре `entry["score"]` заменяется на `entry.score`.
-6. В `smart_recommendation_service.py` `entry["recipe"]` заменяется на `entry.recipe`.
-7. В тестах поправляются обращения к полям.
-8. Выполняются проверки:
+Перед `recommend_safe_recipes` добавить:
 
-   ```bash
-   cd backend
-   ruff check .
-   black --check .
-   pytest tests/test_ml_engine.py tests/test_recommendation_model.py -q
-   pytest
-   ```
+```python
+@dataclass(frozen=True)
+class ScoredRecipe:
+    """One candidate with its similarity to the profile and the final score."""
 
-## Что писать в PR
+    recipe: dict
+    similarity: float
+    score: float
+    matched_products: tuple[str, ...]
+```
+
+## Шаг 3. Обновить докстринг функции
+
+В докстринге `recommend_safe_recipes` заменить описание формата:
+
+```text
+Every entry of ``recipes`` is a ``ScoredRecipe`` with the recipe row, its
+similarity to the profile, the final score and the matched fridge products.
+```
+
+## Шаг 4. Заменить создание результатов
+
+Было:
+
+```python
+    scored: list[dict] = []
+    ...
+        scored.append(
+            {
+                "recipe": row,
+                "similarity": similarity,
+                "score": similarity + FRIDGE_BONUS * share,
+                "matched_products": matched_products,
+            }
+        )
+```
+
+Стало:
+
+```python
+    scored: list[ScoredRecipe] = []
+    ...
+        scored.append(
+            ScoredRecipe(
+                recipe=row,
+                similarity=similarity,
+                score=similarity + FRIDGE_BONUS * share,
+                matched_products=tuple(matched_products),
+            )
+        )
+```
+
+## Шаг 5. Заменить сортировку и фильтр
+
+Было:
+
+```python
+    ranked = sorted(scored, key=lambda entry: entry["score"], reverse=True)
+    selected = [entry for entry in ranked if entry["score"] > 0][: max(limit, 0)]
+```
+
+Стало:
+
+```python
+    ranked = sorted(scored, key=lambda entry: entry.score, reverse=True)
+    selected = [entry for entry in ranked if entry.score > 0][: max(limit, 0)]
+```
+
+## Шаг 6. Обновить сервис
+
+В `backend/app/services/smart_recommendation_service.py` строка 73:
+
+```python
+selected = [entry.recipe for entry in outcome["recipes"]]
+```
+
+`outcome` и `stats` не меняются.
+
+## Шаг 7. Обновить тесты
+
+В `backend/tests/test_ml_engine.py` заменить:
+
+```python
+entry["recipe"]              -> entry.recipe
+best["recipe"]               -> best.recipe
+best["matched_products"]     -> best.matched_products
+outcome["recipes"][1]["matched_products"] -> outcome["recipes"][1].matched_products
+```
+
+Строки для проверки: 76, 94, 95, 96, 107, 124. В
+`backend/tests/test_recommendation_model.py` строка 113: `entry["recipe"]` → `entry.recipe`.
+
+Удобно проверить перед тестами:
+
+```bash
+grep -RniE '\["(recipe|score|matched_products)"\]' backend/tests/test_ml_engine.py \
+  backend/tests/test_recommendation_model.py backend/app/services/smart_recommendation_service.py
+```
+
+В этих местах не должно остаться обращений к элементам `outcome["recipes"]` как к словарю.
+
+## Шаг 8. Проверить
+
+```bash
+cd backend
+ruff check .
+black --check .
+pytest tests/test_ml_engine.py tests/test_recommendation_model.py -q
+pytest
+```
+
+## Шаг 9. Коммит и push
+
+```bash
+git diff --stat
+git diff --check
+git add backend/app/ml/engine.py backend/app/services/smart_recommendation_service.py
+git add backend/tests/test_ml_engine.py backend/tests/test_recommendation_model.py
+git commit -m "refactor(ml): use ScoredRecipe instead of dicts"
+git push -u origin refactor/pract5-engine
+```
+
+## Шаг 10. PR
 
 Заголовок:
 
@@ -52,19 +157,18 @@
 refactor(ml): use ScoredRecipe instead of dicts
 ```
 
-В описании: было «словарь по договорённости», стало четыре явных поля. Опечатка теперь ловится
-при запуске, а не превращается в пустое значение. Контракт API не менялся.
+В описании:
 
-## Что может спросить ревьюер
+- было: список словарей с ключами по договорённости;
+- стало: `ScoredRecipe` с четырьмя полями;
+- API и `outcome` не меняются;
+- проверки и `git diff --stat`.
 
-- «Почему `matched_products` — tuple, а не list?» — чтобы объект был неизменяемым, как и весь
-  `ScoredRecipe`.
-- «Почему `recipe: dict`, а не отдельный тип?» — на этом шаге это строка из базы; отдельный DTO
-  для рецепта — уже другая задача.
-- «Точно ли API не меняется?» — `outcome["recipes"]` внутри стал списком объектов, но сервис сразу
-  превращает их обратно в `entry.recipe`; в JSON уходит то же самое.
+Ревьюер: Мокрецов Егор.
 
-## Границы изменения
+## Частые ошибки
 
-`knn.py`, `vectorizer.py`, статистика `stats` и названия полей ответа API не меняются. В тестах
-меняются только обращения к элементам результата.
+- изменился `outcome`: он должен остаться словарём;
+- `matched_products` остался списком, хотя поле объявлено tuple;
+- не все тесты обновлены, и `pytest` падает на `KeyError`;
+- в PR попали `knn.py` или `vectorizer.py`.
