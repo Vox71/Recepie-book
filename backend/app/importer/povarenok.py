@@ -147,6 +147,7 @@ def parse_ingredients(raw: Any) -> tuple[Ingredient, ...]:
         return ()
     return _ingredients_from_pairs(pairs)
 
+
 def _is_missing_value(raw: Any) -> bool:
     """Empty value: None or NaN of a pandas column."""
     return raw is None or (isinstance(raw, float) and math.isnan(raw))
