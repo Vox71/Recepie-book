@@ -7,6 +7,7 @@
  * the pages (401 means "log in again", 404 means "not found", 400 carries the message).
  */
 export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/$/, '');
+export const DEFAULT_TIMEOUT_MS = 15_000;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -23,6 +24,7 @@ interface RequestOptions {
   body?: unknown;
   token?: string | null;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 function errorMessage(payload: unknown, status: number): string {
@@ -47,14 +49,42 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers.Authorization = `Bearer ${options.token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    signal: options.signal,
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  );
+  const abortFromCaller = () => controller.abort();
+  if (options.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener('abort', abortFromCaller, { once: true });
+    }
+  }
 
-  const text = await response.text();
+  let response: Response;
+  let text: string;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    });
+    // Reading the body is part of the request: a server that sends headers and then
+    // stalls must not keep the page waiting forever.
+    text = await response.text();
+  } catch (cause) {
+    if (controller.signal.aborted && !options.signal?.aborted) {
+      throw new ApiError(408, 'Request timed out');
+    }
+    throw cause;
+  } finally {
+    window.clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', abortFromCaller);
+  }
+
   let payload: unknown = null;
   if (text) {
     try {

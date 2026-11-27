@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 PREFERENCE_BONUS = 0.2
 EMBEDDING_ERRORS = (ImportError, OSError, RuntimeError, ValueError)
+# A broken model artifact or an unexpected vector shape must not take the endpoint down:
+# the baseline scorer below is the graceful-degradation path.
+SMART_RECOMMENDATION_ERRORS = (KeyError, TypeError, AttributeError, ValueError, ZeroDivisionError)
 
 
 def suggest_recipes(db: Database, user_id: int, settings: Settings) -> dict:
@@ -49,7 +52,13 @@ def recommend_recipes(db: Database, user_id: int, settings: Settings) -> dict:
     in both cases (openapi.yaml), so a client cannot tell the modes apart.
     """
     if settings.smart_recommendations_enabled:
-        return smart_recommendation_service.recommend_recipes(db, user_id, settings)
+        try:
+            return smart_recommendation_service.recommend_recipes(db, user_id, settings)
+        except SMART_RECOMMENDATION_ERRORS:
+            logger.warning(
+                "Smart recommendation pipeline failed, falling back to the baseline scorer",
+                exc_info=True,
+            )
 
     user = users_model.get_user_by_id(db, user_id)
     if user is None:

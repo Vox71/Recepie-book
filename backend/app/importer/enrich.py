@@ -151,7 +151,11 @@ def load_page(
     """
     path = cache_path(cache_dir, recipe_id)
     if path.is_file() and not refresh:
-        return path.read_text(encoding="utf-8", errors="replace"), True
+        try:
+            return path.read_text(encoding="utf-8", errors="replace"), True
+        except OSError:
+            # A damaged cache entry must not stop the whole import: fetch the page again.
+            logger.warning("Cannot read cached page %s, fetching it again", path)
 
     if delay > 0:
         # Politeness: one request per delay, never a burst over the whole table.
@@ -183,6 +187,7 @@ def enrich_recipes(
     rows = db.fetch_all(CANDIDATES_SQL, (force, PARSER_VERSION, limit))
     stats = EnrichmentStats(candidates=len(rows))
     blocked = 0
+    consecutive_failures = 0
     for row in rows:
         recipe_id = int(row["id"])
         url = str(row["source_url"])
@@ -199,15 +204,21 @@ def enrich_recipes(
             page = parse_recipe_page(html, source_url=url)
         except PageError as exc:
             stats.failed += 1
+            consecutive_failures += 1
             logger.warning("Recipe %s (%s): %s", recipe_id, url, exc)
             blocked = blocked + 1 if _is_blocked(exc) else 0
             if blocked >= MAX_CONSECUTIVE_FAILURES:
                 stats.stopped = f"{blocked} blocked answers in a row, the run is stopped"
                 logger.error(stats.stopped)
                 break
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                stats.stopped = f"{consecutive_failures} page failures in a row, the run is stopped"
+                logger.error(stats.stopped)
+                break
             continue
 
         blocked = 0
+        consecutive_failures = 0
         if from_cache:
             stats.from_cache += 1
         else:
