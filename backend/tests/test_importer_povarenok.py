@@ -181,7 +181,7 @@ def test_download_dataset_unpacks_the_archive_and_sends_the_credentials(tmp_path
 
     seen: dict[str, object] = {}
 
-    def opener(request, timeout):
+    def opener(request, *, timeout):
         seen["url"] = request.full_url
         seen["timeout"] = timeout
         seen["authorization"] = request.get_header("Authorization")
