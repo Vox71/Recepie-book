@@ -41,6 +41,7 @@ def active_timers() -> tuple:
     timer_service.close_expired_timers(db, user_id)
     return jsonify(timer_service.active_timers(db, user_id)), 200
 
+
 @bp.delete("/timers/<int:timer_id>")
 @token_required
 def cancel_timer(timer_id: int) -> tuple:
