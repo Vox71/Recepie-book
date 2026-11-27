@@ -30,13 +30,16 @@ def start_timer() -> tuple:
 @bp.get("/timers/active")
 @token_required
 def active_timers() -> tuple:
-    """Return the running timers of the token owner together with ``server_time``."""
+    """Return active timers of the authenticated user.
+
+    First closes expired timers, then retrieves the remaining active timers.
+    The response includes server_time for client-side countdown synchronization.
+    """
     db = get_db()
     user_id = current_user_id()
 
     timer_service.close_expired_timers(db, user_id)
     return jsonify(timer_service.active_timers(db, user_id)), 200
-
 
 @bp.delete("/timers/<int:timer_id>")
 @token_required
