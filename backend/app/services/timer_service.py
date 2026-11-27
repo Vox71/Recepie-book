@@ -82,6 +82,20 @@ def active_timers(db: Database, user_id: int) -> dict:
         "timers": [serialize_timer(row) for row in rows],
     }
 
+def close_expired_timers(db: Database, user_id: int) -> int:
+    """Close all expired timers belonging to the specified user.
+
+    Updates expired timers in the database before they are retrieved.
+    Timers belonging to other users are not affected.
+
+    Args:
+        db: Database connection used to execute the update.
+        user_id: ID of the timer owner.
+
+    Returns:
+        Number of timers closed during the operation.
+    """
+    return timers_model.close_expired(db, user_id)
 
 def cancel_timer(db: Database, user_id: int, timer_id: int) -> dict:
     """Stop a running timer of the token owner or raise 404."""
