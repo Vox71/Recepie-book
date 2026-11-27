@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from app.importer.enrich import cache_path, enrich_recipes, load_page, page_summary
+from app.importer.enrich import EnrichOptions, cache_path, enrich_recipes, load_page, page_summary
 from app.importer.pages import PageError, fetch_recipe_page, parse_recipe_page
 
 FIXTURES = Path(__file__).parent / "data" / "pages"
@@ -271,7 +271,8 @@ def test_enrich_saves_the_parsed_page(db, tmp_path) -> None:
     recipe_id = insert_recipe(db, URL)
 
     stats = enrich_recipes(
-        db, cache_dir=tmp_path, delay=0.0, opener=make_page_opener(fixture_html(FULL))
+        db,
+        EnrichOptions(cache_dir=tmp_path, delay=0.0, opener=make_page_opener(fixture_html(FULL))),
     )
 
     assert stats.candidates == 1
@@ -317,7 +318,10 @@ def test_enrich_marks_a_page_without_steps(db, tmp_path) -> None:
     recipe_id = insert_recipe(db, URL)
 
     stats = enrich_recipes(
-        db, cache_dir=tmp_path, delay=0.0, opener=make_page_opener(fixture_html(PARTIAL))
+        db,
+        EnrichOptions(
+            cache_dir=tmp_path, delay=0.0, opener=make_page_opener(fixture_html(PARTIAL))
+        ),
     )
 
     assert stats.without_steps == 1
@@ -336,14 +340,16 @@ def test_enrich_is_idempotent_and_uses_the_cache(db, tmp_path) -> None:
     def forbidden(request, *, timeout):
         raise AssertionError("the cached page must be used instead of the network")
 
-    first = enrich_recipes(db, cache_dir=tmp_path, delay=0.0, opener=forbidden)
+    first = enrich_recipes(db, EnrichOptions(cache_dir=tmp_path, delay=0.0, opener=forbidden))
     assert (first.updated, first.from_cache, first.fetched) == (1, 1, 0)
 
-    second = enrich_recipes(db, cache_dir=tmp_path, delay=0.0, opener=forbidden)
+    second = enrich_recipes(db, EnrichOptions(cache_dir=tmp_path, delay=0.0, opener=forbidden))
     assert second.candidates == 0
     assert second.updated == 0
 
-    forced = enrich_recipes(db, cache_dir=tmp_path, delay=0.0, opener=forbidden, force=True)
+    forced = enrich_recipes(
+        db, EnrichOptions(cache_dir=tmp_path, delay=0.0, opener=forbidden, force=True)
+    )
     assert forced.candidates == 1
     assert (forced.updated, forced.fetched) == (1, 0)
 
@@ -358,7 +364,7 @@ def test_enrich_counts_a_failed_page_and_keeps_going(db, tmp_path) -> None:
             raise PageError(f"{url}: HTTP 404")
         return fixture_html(FULL)
 
-    stats = enrich_recipes(db, cache_dir=tmp_path, delay=0.0, opener=opener)
+    stats = enrich_recipes(db, EnrichOptions(cache_dir=tmp_path, delay=0.0, opener=opener))
 
     assert stats.candidates == 2
     assert (stats.failed, stats.updated) == (1, 1)
