@@ -129,6 +129,20 @@ class EnrichmentStats:
         }
 
 
+@dataclass(frozen=True)
+class EnrichOptions:
+    """All settings of one enrichment run."""
+
+    limit: int = DEFAULT_LIMIT
+    delay: float = DEFAULT_DELAY_SECONDS
+    force: bool = False
+    refresh: bool = False
+    cache_dir: str | Path = DEFAULT_CACHE_DIR
+    timeout: int = DEFAULT_TIMEOUT_SECONDS
+    dry_run: bool = False
+    opener: Callable[..., str] = fetch_recipe_page
+
+
 def cache_path(cache_dir: str | Path, recipe_id: int) -> Path:
     """Return the cached HTML file of a recipe."""
     return Path(cache_dir) / f"{recipe_id}.html"
@@ -162,25 +176,15 @@ def load_page(
     return html, False
 
 
-def enrich_recipes(
-    db: Database,
-    *,
-    limit: int = DEFAULT_LIMIT,
-    delay: float = DEFAULT_DELAY_SECONDS,
-    force: bool = False,
-    refresh: bool = False,
-    cache_dir: str | Path = DEFAULT_CACHE_DIR,
-    timeout: int = DEFAULT_TIMEOUT_SECONDS,
-    dry_run: bool = False,
-    opener: Callable = fetch_recipe_page,
-) -> EnrichmentStats:
-    """Enrich up to ``limit`` recipes and return the counters of the run.
+def enrich_recipes(db: Database, options: EnrichOptions) -> EnrichmentStats:
+    """Enrich up to ``options.limit`` recipes and return the counters of the run.
 
-    ``force`` ignores the ``parsed_at``/``parser_version`` mark (re-parse a parsed recipe),
-    ``refresh`` ignores the HTML cache (download again).  ``dry_run`` parses and counts but
-    writes nothing, which is what the ``--url`` mode of the CLI uses.
+    ``options.force`` ignores the ``parsed_at``/``parser_version`` mark (re-parse a parsed
+    recipe), ``options.refresh`` ignores the HTML cache (download again), and
+    ``options.dry_run`` parses and counts but writes nothing, which is what the ``--url``
+    mode of the CLI uses.
     """
-    rows = db.fetch_all(CANDIDATES_SQL, (force, PARSER_VERSION, limit))
+    rows = db.fetch_all(CANDIDATES_SQL, (options.force, PARSER_VERSION, options.limit))
     stats = EnrichmentStats(candidates=len(rows))
     blocked = 0
     for row in rows:
@@ -190,11 +194,11 @@ def enrich_recipes(
             html, from_cache = load_page(
                 recipe_id,
                 url,
-                cache_dir=cache_dir,
-                timeout=timeout,
-                delay=delay,
-                refresh=refresh,
-                opener=opener,
+                cache_dir=options.cache_dir,
+                timeout=options.timeout,
+                delay=options.delay,
+                refresh=options.refresh,
+                opener=options.opener,
             )
             page = parse_recipe_page(html, source_url=url)
         except PageError as exc:
@@ -213,7 +217,7 @@ def enrich_recipes(
         else:
             stats.fetched += 1
         _count_page(stats, page)
-        if dry_run:
+        if options.dry_run:
             logger.info("Recipe %s: %s", recipe_id, page_summary(page))
             continue
         save_page(db, recipe_id, page)

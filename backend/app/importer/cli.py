@@ -39,6 +39,7 @@ from .enrich import (
     DEFAULT_CACHE_DIR,
     DEFAULT_DELAY_SECONDS,
     DEFAULT_LIMIT,
+    EnrichOptions,
     enrich_recipes,
     page_summary,
 )
@@ -175,13 +176,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _ensure_schema(database)
             stats = enrich_recipes(
                 database,
-                limit=args.limit or DEFAULT_LIMIT,
-                delay=args.delay,
-                force=args.force,
-                refresh=args.refresh,
-                cache_dir=args.pages_dir,
-                timeout=args.timeout,
-                dry_run=args.dry_run,
+                EnrichOptions(
+                    # --limit accepts only positive integers; use the default when omitted.
+                    limit=args.limit or DEFAULT_LIMIT,
+                    delay=args.delay,
+                    force=args.force,
+                    refresh=args.refresh,
+                    cache_dir=args.pages_dir,
+                    timeout=args.timeout,
+                    dry_run=args.dry_run,
+                ),
             )
             logger.info(
                 "Enrichment finished: %s",
