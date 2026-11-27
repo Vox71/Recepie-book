@@ -96,6 +96,7 @@ describe('fridge page', () => {
     renderFridge();
 
     expect(await screen.findByRole('heading', { name: 'Мой холодильник' })).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Молоко' });
     const summary = screen.getByRole('region', { name: 'Сводка по холодильнику' });
     expect(within(summary).getByText('Всего продуктов')).toBeInTheDocument();
     expect(within(summary).getByText('3')).toBeInTheDocument();

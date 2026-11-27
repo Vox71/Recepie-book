@@ -590,9 +590,10 @@ CI на PostgreSQL 15: там доступность базы контролир
 
 # Фронтенд (Vitest + Testing Library)
 
-Спринт 3, задачи 3–5, плюс ветка `feat/fridge-auth` (API-клиент, авторизация и страница
-холодильника). Тесты живут рядом с кодом (`frontend/src/__tests__/`), не ходят в сеть и не
-поднимают браузер: адрес задаётся `MemoryRouter`, DOM даёт jsdom, клик —
+Спринт 3, задачи 3–5, ветка `feat/fridge-auth` (API-клиент, авторизация и страница
+холодильника) и `feat/recipe-servings` (реальная карточка рецепта, пересчёт порций и КБЖУ). Тесты
+живут рядом с кодом (`frontend/src/__tests__/`), не ходят в сеть и не поднимают браузер: адрес
+задаётся `MemoryRouter`, DOM даёт jsdom, клик —
 `@testing-library/user-event`, `fetch` подменяется в тестах страниц.
 
 Запуск:
@@ -600,8 +601,8 @@ CI на PostgreSQL 15: там доступность базы контролир
 ```bash
 cd frontend
 npm ci
-npm run test:run        # 49 passed, 7 файлов
-npm run test:coverage   # те же 47 + покрытие и порог 80 %
+npm run test:run        # 54 passed, 8 файлов
+npm run test:coverage   # те же 54 + покрытие и порог 80 %
 ```
 
 ## Покрытие и порог (задача 5)

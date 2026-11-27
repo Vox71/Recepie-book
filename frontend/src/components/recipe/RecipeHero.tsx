@@ -2,7 +2,7 @@ import { ChefHat, CircleCheck, Clock, Heart, Users } from 'lucide-react';
 import { useState } from 'react';
 
 import recipeHero from '../../assets/recipe-hero.svg';
-import type { RecipeView } from '../../mocks/recipe';
+import type { RecipeView } from './types';
 import Button from '../ui/Button';
 import styles from './RecipeHero.module.css';
 
@@ -11,43 +11,43 @@ interface RecipeHeroProps {
 }
 
 /**
- * First screen of the recipe: the photo with its badge, the title, the meta row, the
- * "already in the fridge" banner and the favourite button.
- *
- * The favourite button toggles only the local visual state for now: favourites have their
- * own API (`/favorite_recipes`, sprint 4), and pretending otherwise would be a lie. The
- * button reports the state through `aria-pressed`, so the behaviour is testable.
+ * First screen of the recipe: the photo, title, meta row, fridge summary and favourite
+ * button. The recipe comes from `GET /recipes/{id}`; the only local state is the visual
+ * state of the favourite button, because favourites still have no client API call.
  */
 export default function RecipeHero({ recipe }: RecipeHeroProps) {
   const [favorite, setFavorite] = useState(false);
-  const available = recipe.ingredients.filter((item) => item.available).length;
+  const known =
+    recipe.ingredients.length > 0 && recipe.ingredients.every((item) => item.available !== null);
+  const available = recipe.ingredients.filter((item) => item.available === true).length;
+  const missing = recipe.ingredients
+    .filter((item) => item.available === false)
+    .map((item) => item.name);
 
   return (
     <section className={styles.hero} aria-labelledby="recipe-title">
       <div className={styles.media}>
         <img className={styles.image} src={recipeHero} alt={`Фотография блюда «${recipe.title}»`} />
-        <span className={styles.badge}>{recipe.badge}</span>
       </div>
 
       <div className={styles.content}>
-        <p className={styles.eyebrow}>{recipe.eyebrow}</p>
+        <p className={styles.eyebrow}>Рецепт</p>
         <h1 id="recipe-title" className={styles.title}>
           {recipe.title}
         </h1>
-        <p className={styles.description}>{recipe.description}</p>
 
         <ul className={styles.meta}>
           <li>
             <Clock size={18} aria-hidden="true" />
-            {recipe.minutes} минут
+            {recipe.minutes === null ? 'Время не указано' : `${recipe.minutes} минут`}
           </li>
           <li>
             <ChefHat size={18} aria-hidden="true" />
-            {recipe.difficulty}
+            {recipe.difficulty ?? 'Сложность не указана'}
           </li>
           <li>
             <Users size={18} aria-hidden="true" />
-            {recipe.servings} порции
+            {recipe.servings === null ? 'Порции не указаны' : `${recipe.servings} порции`}
           </li>
         </ul>
 
@@ -55,12 +55,25 @@ export default function RecipeHero({ recipe }: RecipeHeroProps) {
           <span className={styles.availabilityIcon} aria-hidden="true">
             <CircleCheck size={20} />
           </span>
-          <div>
-            <p className={styles.availabilityTitle}>
-              {available} из {recipe.ingredients.length} ингредиентов уже есть
-            </p>
-            <p className={styles.availabilityText}>Нужно добавить {recipe.missing}</p>
-          </div>
+          {known ? (
+            <div>
+              <p className={styles.availabilityTitle}>
+                {available} из {recipe.ingredients.length} ингредиентов уже есть
+              </p>
+              <p className={styles.availabilityText}>
+                {missing.length === 0
+                  ? 'Все ингредиенты есть в холодильнике'
+                  : `Нужно добавить: ${missing.join(', ')}`}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className={styles.availabilityTitle}>Состав холодильника недоступен</p>
+              <p className={styles.availabilityText}>
+                Ингредиенты показаны без отметок «есть / нужно добавить».
+              </p>
+            </div>
+          )}
         </div>
 
         <Button

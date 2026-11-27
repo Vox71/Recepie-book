@@ -56,6 +56,10 @@
   color: var(--color-brand);
 }
 
+.status[data-available='unknown'] {
+  color: var(--color-muted);
+}
+
 .name {
   display: flex;
   flex-direction: column;
