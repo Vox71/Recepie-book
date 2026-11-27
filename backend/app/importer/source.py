@@ -65,7 +65,9 @@ def download_dataset(
     )
     logger.info("Downloading %s to %s (timeout %s s)", dataset, target, timeout)
     try:
-        with opener(request, timeout) as response, archive.open("wb") as output:
+        # ``timeout`` is a keyword: the second positional argument of ``urlopen`` is the
+        # request body, not the timeout.
+        with opener(request, timeout=timeout) as response, archive.open("wb") as output:
             shutil.copyfileobj(response, output, length=CHUNK_SIZE)
         _unpack(archive, target)
     except OSError as exc:

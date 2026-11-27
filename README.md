@@ -68,7 +68,7 @@ Swagger UI — `http://localhost:${SWAGGER_PORT}/`.
 |---|---|
 | `users` | пользователи: `username`, `password` (scrypt-хэш), `email`, `allergies`/`preferences` (термины через запятую) |
 | `recipes` | рецепты: `recipe_name`, `ingredients`, `instruction`, `difficulty_level`, `source_url` (ключ импорта), `cooking_time_minutes`, `servings`, `created_at`/`updated_at` |
-| `recipe_ingredients` | ингредиенты рецепта по строкам: `ingredient_name`, `quantity_text`, `sort_order` |
+| `recipe_ingredients` | ингредиенты рецепта по строкам: `ingredient_name`, `quantity_text`, `quantity_value`, `quantity_unit`, `sort_order` |
 | `recipe_steps` | шаги приготовления: `step_number`, `text`, `image_url` (со страницы рецепта) |
 | `recipe_nutrition` | КБЖУ рецепта: «всё блюдо» и «100 г блюда» |
 | `fridge_items` | продукты: `item_id` (ключ), `user_id`, `product_name`, `expiration_date`, `quantity`, `last_added` |

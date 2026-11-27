@@ -159,3 +159,15 @@ SMART_RECOMMENDATIONS_ARTIFACT=/srv/models/v1.json
 5. **Тесты** — `backend/tests/test_recommendation_model.py` (9 кейсов): веса IDF, round-trip
    артефакта, битый/отсутствующий файл, переключение движка на модель, арифметика метрик,
    критерий приёмки на корпусе репозитория, коды возврата CLI и чтение корпуса из БД.
+
+## Честный split и гибридный ранкер
+
+Отдельный эксперимент с train/validation/test, BM25, positive-PMI co-occurrence и
+гибридным score описан в [`docs/recommendation-ranking.md`](recommendation-ranking.md).
+Команда:
+
+```bash
+python -m app.ml.experiment --from-db --limit 12000 --k 10 --max-queries 1000 --json
+```
+
+На test-выборке из 1 000 запросов гибрид дал P@10 0,430, Hit@10 0,822 и MRR@10 0,565.

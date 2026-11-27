@@ -1021,6 +1021,21 @@ components:
           description: >
             Колонка recipe_ingredients.quantity_text (varchar(100)); null, если в
             источнике количество не указано (например, «соль» без граммовки).
+        quantity_value:
+          type: number
+          format: float
+          nullable: true
+          description: >
+            Разобранное количество из quantity_text: масса в граммах, объём в
+            миллилитрах, штуки и ложки — в исходных единицах. null для «по вкусу»
+            и диапазонов; текст остаётся источником истины.
+        quantity_unit:
+          type: string
+          maxLength: 20
+          nullable: true
+          description: >
+            Каноническая единица quantity_value: «г», «мл», «шт.», «ст. л.» и т. п.;
+            null, если количество не разобрано.
 
     RecipeStep:
       type: object
