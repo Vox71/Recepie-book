@@ -164,7 +164,11 @@ def _parse_ingredients_text(text: str) -> tuple[Ingredient, ...]:
 
 
 def _pairs_from_container(raw: Any) -> list[tuple[Any, Any]] | None:
-    """Pairs of a mapping or of a list/tuple; None for an unsupported type."""
+    """Return pairs from a mapping/list/tuple.
+
+    ``None`` means an unsupported type, not an empty value: an empty mapping returns
+    an empty list.
+    """
     if isinstance(raw, Mapping):
         return list(raw.items())
     if isinstance(raw, (list, tuple)):

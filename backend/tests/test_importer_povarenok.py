@@ -337,3 +337,13 @@ def test_module_entry_point_runs_the_cli(monkeypatch, capsys):
         runpy.run_module("app.importer", run_name="__main__")
     assert exit_info.value.code == 0
     assert "usage" in capsys.readouterr().out.lower()
+
+def test_parse_ingredients_accepts_a_list_of_mappings() -> None:
+    assert parse_ingredients([{"Мука": "300 г"}, {"Соль": "щепотка"}]) == (
+        Ingredient(name="Мука", quantity="300 г"),
+        Ingredient(name="Соль", quantity="щепотка"),
+    )
+
+
+def test_parse_ingredients_rejects_an_unsupported_type() -> None:
+    assert parse_ingredients(42) == ()
