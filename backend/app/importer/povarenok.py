@@ -140,34 +140,43 @@ def normalize_ingredient_name(value: Any) -> str:
 
 
 def parse_ingredients(raw: Any) -> tuple[Ingredient, ...]:
-    """Turn the ``ingredients`` column into normalized ``(name, quantity)`` pairs.
-
-    The dataset stores a mapping, but a CSV export holds it as text and an older dump
-    may hold a list, therefore all three shapes are accepted:
-
-    - mapping ``{"Мука": "300 г"}`` — the shape of the dataset;
-    - text ``'{"Мука": "300 г"}'`` or ``"Мука: 300 г; Соль: щепотка"``;
-    - list of ``"Мука: 300 г"`` lines or mappings.
-
-    Names are compared case-insensitively: one ingredient appears once per recipe,
-    which is also the unique constraint of ``recipe_ingredients``.
-    """
-    if raw is None:
-        return ()
-    if isinstance(raw, float) and math.isnan(raw):
+    """Turn the ``ingredients`` column into normalized ``(name, quantity)`` pairs."""
+    if _is_missing_value(raw):
         return ()
     if isinstance(raw, str):
-        text = raw.strip()
-        if text.casefold() in MISSING_VALUES:
-            return ()
-        decoded = _decode_literal(text)
-        if decoded is not None:
-            return parse_ingredients(decoded)
-        return _ingredients_from_pairs(_split_lines(text))
+        return _parse_ingredients_text(raw)
+    pairs = _pairs_from_container(raw)
+    if pairs is None:
+        return ()
+    return _ingredients_from_pairs(pairs)
+
+
+def _is_missing_value(raw: Any) -> bool:
+    """Empty value: None or NaN of a pandas column."""
+    return raw is None or (isinstance(raw, float) and math.isnan(raw))
+
+
+def _parse_ingredients_text(text: str) -> tuple[Ingredient, ...]:
+    """Ingredients written as text: a literal, or 'Мука: 300 г; Соль'."""
+    stripped = text.strip()
+    if stripped.casefold() in MISSING_VALUES:
+        return ()
+    decoded = _decode_literal(stripped)
+    if decoded is not None:
+        return parse_ingredients(decoded)
+    return _ingredients_from_pairs(_split_lines(stripped))
+
+
+def _pairs_from_container(raw: Any) -> list[tuple[Any, Any]] | None:
+    """Return pairs from a mapping/list/tuple.
+
+    ``None`` means an unsupported type, not an empty value: an empty mapping returns
+    an empty list.
+    """
     if isinstance(raw, Mapping):
-        pairs: list[tuple[Any, Any]] = list(raw.items())
-    elif isinstance(raw, (list, tuple)):
-        pairs = []
+        return list(raw.items())
+    if isinstance(raw, (list, tuple)):
+        pairs: list[tuple[Any, Any]] = []
         for item in raw:
             if isinstance(item, Mapping):
                 pairs.extend(item.items())
@@ -175,9 +184,8 @@ def parse_ingredients(raw: Any) -> tuple[Ingredient, ...]:
                 pairs.append(_split_line(item))
             else:
                 pairs.append((item, None))
-    else:
-        return ()
-    return _ingredients_from_pairs(pairs)
+        return pairs
+    return None
 
 
 def render_ingredients(ingredients: Sequence[Ingredient]) -> str:
