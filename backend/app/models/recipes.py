@@ -119,15 +119,21 @@ def list_ingredient_details(db: Database, recipe_ids: Sequence[int]) -> dict[int
     if not recipe_ids:
         return {}
     sql = """
-        SELECT recipe_id, ingredient_name, quantity_text
+        SELECT recipe_id, ingredient_name, quantity_text, quantity_value, quantity_unit
         FROM recipe_ingredients
         WHERE recipe_id = ANY(%s)
         ORDER BY recipe_id, sort_order, id
     """
     details: dict[int, list[dict]] = {}
     for row in db.fetch_all(sql, (list(recipe_ids),)):
+        value = row["quantity_value"]
         details.setdefault(int(row["recipe_id"]), []).append(
-            {"name": str(row["ingredient_name"]), "quantity": row["quantity_text"]}
+            {
+                "name": str(row["ingredient_name"]),
+                "quantity": row["quantity_text"],
+                "quantity_value": float(value) if value is not None else None,
+                "quantity_unit": row["quantity_unit"],
+            }
         )
     return details
 

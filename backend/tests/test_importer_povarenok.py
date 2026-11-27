@@ -249,7 +249,7 @@ def test_import_fills_recipes_and_recipe_ingredients(db):
 
     lines = db.fetch_all(
         """
-        SELECT ingredient_name, quantity_text, sort_order
+        SELECT ingredient_name, quantity_text, quantity_value, quantity_unit, sort_order
         FROM recipe_ingredients
         WHERE recipe_id = %s
         ORDER BY sort_order
@@ -261,7 +261,13 @@ def test_import_fills_recipes_and_recipe_ingredients(db):
         "Морковь",
         "Яйцо куриное",
     ]
-    assert lines[0] == {"ingredient_name": "Картофель", "quantity_text": "4 шт.", "sort_order": 0}
+    assert lines[0] == {
+        "ingredient_name": "Картофель",
+        "quantity_text": "4 шт.",
+        "quantity_value": 4,
+        "quantity_unit": "шт.",
+        "sort_order": 0,
+    }
 
     # An amount that the source does not give stays NULL (Соль in the "Сырники" row).
     salt = db.fetch_one(

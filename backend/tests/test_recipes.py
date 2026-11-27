@@ -159,17 +159,24 @@ def test_imported_recipe_exposes_the_source_and_the_ingredient_list(db_client, d
     # Inserted out of order on purpose: the answer follows sort_order, not the insert order.
     db.execute(
         """
-        INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity_text, sort_order)
-        VALUES (%s, %s, %s, %s), (%s, %s, %s, %s), (%s, %s, NULL, %s)
+        INSERT INTO recipe_ingredients (
+            recipe_id, ingredient_name, quantity_text, quantity_value, quantity_unit, sort_order
+        )
+        VALUES (%s, %s, %s, %s, %s, %s), (%s, %s, %s, %s, %s, %s),
+               (%s, %s, NULL, NULL, NULL, %s)
         """,
         (
             recipe_id,
             "Картофель",
             "3 шт.",
+            3,
+            "шт.",
             1,
             recipe_id,
             "Лосось",
             "400 г",
+            400,
+            "г",
             0,
             recipe_id,
             "Соль",
@@ -202,9 +209,14 @@ def test_imported_recipe_exposes_the_source_and_the_ingredient_list(db_client, d
     assert recipe["steps"] == []
     assert recipe["nutrition"] is None
     assert recipe["ingredient_list"] == [
-        {"name": "Лосось", "quantity": "400 г"},
-        {"name": "Картофель", "quantity": "3 шт."},
-        {"name": "Соль", "quantity": None},
+        {"name": "Лосось", "quantity": "400 г", "quantity_value": 400.0, "quantity_unit": "г"},
+        {
+            "name": "Картофель",
+            "quantity": "3 шт.",
+            "quantity_value": 3.0,
+            "quantity_unit": "шт.",
+        },
+        {"name": "Соль", "quantity": None, "quantity_value": None, "quantity_unit": None},
     ]
     # The same fields come with a page, so a client needs no second request per recipe.
     assert [item["ingredient_list"] for item in db_client.get("/recipes").get_json()] == [

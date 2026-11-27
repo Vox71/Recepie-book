@@ -4,6 +4,8 @@ import { apiRequest } from './client';
 export interface RecipeIngredientDto {
   name: string;
   quantity: string | null;
+  quantity_value?: number | null;
+  quantity_unit?: string | null;
 }
 
 /** `RecipeStep` of openapi.yaml. */

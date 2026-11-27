@@ -34,6 +34,7 @@ from typing import Any
 from psycopg2.extras import execute_values
 
 from ..db import Database
+from .quantity import parse_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -63,12 +64,14 @@ INSERT_RECIPES_SQL = """
 RECIPE_TEMPLATE = "(%s, %s, %s, NULL, NULL)"
 
 INSERT_INGREDIENTS_SQL = """
-    INSERT INTO recipe_ingredients (recipe_id, ingredient_name, quantity_text, sort_order)
+    INSERT INTO recipe_ingredients (
+        recipe_id, ingredient_name, quantity_text, quantity_value, quantity_unit, sort_order
+    )
     VALUES %s
     ON CONFLICT (recipe_id, ingredient_name) DO NOTHING
     RETURNING id
 """
-INGREDIENT_TEMPLATE = "(%s, %s, %s, %s)"
+INGREDIENT_TEMPLATE = "(%s, %s, %s, %s, %s, %s)"
 
 
 class DatasetError(RuntimeError):
@@ -308,11 +311,20 @@ def _insert_batch(db: Database, batch: Sequence[RecipeRecord], stats: ImportStat
             return
 
         by_source = {record.source_url: record for record in batch}
-        ingredient_values = [
-            (int(row["id"]), ingredient.name, ingredient.quantity, position)
-            for row in inserted
-            for position, ingredient in enumerate(by_source[row["source_url"]].ingredients)
-        ]
+        ingredient_values = []
+        for row in inserted:
+            for position, ingredient in enumerate(by_source[row["source_url"]].ingredients):
+                parsed = parse_quantity(ingredient.quantity)
+                ingredient_values.append(
+                    (
+                        int(row["id"]),
+                        ingredient.name,
+                        ingredient.quantity,
+                        parsed.value,
+                        parsed.unit,
+                        position,
+                    )
+                )
         if ingredient_values:
             execute_values(
                 cur,

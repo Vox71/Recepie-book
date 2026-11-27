@@ -6,6 +6,7 @@ Examples:
     python -m app.importer --dataset tests/data/povarenok_sample.json --dry-run
     python -m app.importer --download --destination data/povarenok
     python -m app.importer --enrich --limit 200 --delay 1.0
+    python -m app.importer --normalize-quantities
     python -m app.importer --url https://www.povarenok.ru/recipes/show/184919/ --dry-run
 
 ``--dry-run`` parses and validates the file without touching the database, so it works
@@ -43,6 +44,7 @@ from .enrich import (
 )
 from .pages import PageError, fetch_recipe_page, parse_recipe_page
 from .povarenok import DEFAULT_BATCH_SIZE, DatasetError, find_dataset_file, import_dataset
+from .quantity import backfill_quantities
 from .source import DEFAULT_TIMEOUT_SECONDS, download_dataset
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="download and parse the pages of imported recipes (sprint 3, task 2)",
     )
     parser.add_argument(
+        "--normalize-quantities",
+        action="store_true",
+        help="fill quantity_value/quantity_unit for already imported ingredients",
+    )
+    parser.add_argument(
         "--url",
         action="append",
         default=None,
@@ -148,6 +155,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     database: Database | None = None
     try:
+        if args.normalize_quantities:
+            if not settings.database_url:
+                logger.error("DATABASE_URL is not configured; cannot normalize quantities")
+                return EXIT_CONFIGURATION
+            database = Database(settings.database_url, pool_min=1, pool_max=2)
+            updated = backfill_quantities(database)
+            logger.info("Normalized quantities: %s ingredient row(s)", updated)
+            return EXIT_OK
+
         if args.enrich:
             if not settings.database_url:
                 logger.error(

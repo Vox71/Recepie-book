@@ -82,8 +82,12 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
     recipe_id       integer      NOT NULL REFERENCES recipes (id) ON DELETE CASCADE,
     ingredient_name varchar(200) NOT NULL,
     -- The amount exactly as written in the source ("150 г", "1 щепот."); NULL when
-    -- the source gives no amount. Parsing it into a number is out of scope.
+    -- the source gives no amount.
     quantity_text   varchar(100),
+    -- Parsed form of quantity_text: mass in grams, volume in millilitres, countable
+    -- units as-is.  NULL for "по вкусу" and ranges; the text stays authoritative.
+    quantity_value  numeric(12, 3) CHECK (quantity_value IS NULL OR quantity_value >= 0),
+    quantity_unit   varchar(20),
     -- Position in the source list, so the order can be restored.
     sort_order      integer      NOT NULL DEFAULT 0,
     -- One ingredient once per recipe; the index also serves recipe_id lookups.

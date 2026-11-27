@@ -120,6 +120,8 @@ erDiagram
 | `recipe_id` | `integer` | NN, FK → `recipes.id` ON DELETE CASCADE | |
 | `ingredient_name` | `character varying(200)` | NN, U `recipe_ingredients_recipe_name_key` вместе с `recipe_id` | один ингредиент один раз на рецепт |
 | `quantity_text` | `character varying(100)` | — | количество как в источнике («150 г», «1 щепот.»); `NULL`, если его нет |
+| `quantity_value` | `numeric(12,3)` | CHECK (`IS NULL OR >= 0`) | разобранное количество: масса в граммах, объём в миллилитрах, штуки/ложки в исходных единицах; `NULL` для «по вкусу» и диапазонов |
+| `quantity_unit` | `character varying(20)` | — | единица `quantity_value`: `г`, `мл`, `шт.`, `ст. л.` и т. п.; `NULL`, если количество не разобрано |
 | `sort_order` | `integer` | NN, по умолчанию `0` | порядок ингредиентов в источнике |
 
 Ингредиенты хранятся и в `recipes.ingredients` (текстом), и здесь (по строкам). Дублирование

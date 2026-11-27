@@ -107,6 +107,8 @@ EXPECTED_COLUMNS = {
         "recipe_id": ("integer", None),
         "ingredient_name": ("character varying", 200),
         "quantity_text": ("character varying", 100),
+        "quantity_value": ("numeric", None),
+        "quantity_unit": ("character varying", 20),
         "sort_order": ("integer", None),
     },
     "fridge_items": {
