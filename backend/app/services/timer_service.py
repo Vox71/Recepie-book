@@ -80,6 +80,7 @@ def close_expired_timers(db: Database, user_id: int) -> int:
     """
     return timers_model.close_expired(db, user_id)
 
+
 def active_timers(db: Database, user_id: int) -> dict:
     """Retrieve active timers belonging to the specified user.
 
