@@ -39,8 +39,32 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const RECIPE = {
+  id: 42,
+  name: 'Овощная паста с томатами',
+  ingredients: 'Паста, томаты',
+  ingredient_list: [{ name: 'Паста', quantity: '200 г' }],
+  instructions: null,
+  difficulty_level: null,
+  source_url: null,
+  cooking_time_minutes: 25,
+  servings: 2,
+  steps: [],
+  nutrition: null,
+};
+
 const loginHeading = () => screen.getByRole('heading', { name: 'С возвращением!' });
 const notFoundHeading = () => screen.getByRole('heading', { name: 'Страница не найдена' });
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      return url.includes('/recipes/42') ? jsonResponse(RECIPE) : jsonResponse([]);
+    }),
+  );
+});
 
 describe('app routing', () => {
   it('renders the login page at /login', () => {
@@ -51,13 +75,13 @@ describe('app routing', () => {
     expect(screen.getByLabelText('Пароль')).toHaveAttribute('type', 'password');
   });
 
-  it('passes the recipe id from the address to the recipe page', () => {
+  it('passes the recipe id from the address to the recipe page', async () => {
     const { container } = renderAt('/recipes/42');
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Овощная паста с томатами' }),
+      await screen.findByRole('heading', { level: 1, name: 'Овощная паста с томатами' }),
     ).toBeInTheDocument();
-    // The id is bound to the address: the future GET /recipes/{id} will read it here.
+    // The id is bound to the address: the API request reads it from the route.
     expect(container.querySelector('[data-recipe-id="42"]')).not.toBeNull();
   });
 
@@ -99,9 +123,18 @@ describe('app routing', () => {
 
   it('navigates from the recipe page to the fridge by the logo', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([])));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        return url.includes('/recipes/42') ? jsonResponse(RECIPE) : jsonResponse([]);
+      }),
+    );
     renderAt('/recipes/42');
 
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Овощная паста с томатами' }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: 'Recepie Book' }));
 
     expect(await screen.findByRole('heading', { name: 'Мой холодильник' })).toBeInTheDocument();

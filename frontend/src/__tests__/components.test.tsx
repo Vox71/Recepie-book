@@ -2,16 +2,25 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import IngredientsCard from '../components/recipe/IngredientsCard';
+import type { RecipeView } from '../components/recipe/types';
 import Button from '../components/ui/Button';
-import { recipeMock } from '../mocks/recipe';
 
-/**
- * Component-level cases of the design task (sprint 3, task 5: coverage).
- *
- * The page tests already render these components through the pages, so only the branches
- * that the two mockups never reach are checked here: a button without an icon and a recipe
- * without allergens (the peach notice must disappear, not render empty).
- */
+const RECIPE: RecipeView = {
+  id: 1,
+  title: 'Тестовый рецепт',
+  minutes: null,
+  difficulty: null,
+  servings: 2,
+  ingredients: [
+    { name: 'Соль', quantity: 'по вкусу', available: null },
+    { name: 'Молоко', quantity: '200 мл', available: true },
+  ],
+  steps: [],
+  sourceUrl: null,
+  sourceLabel: '',
+};
+
+/** Component-level branches that the page scenarios do not reach. */
 describe('ui primitives', () => {
   it('renders a button without an icon', () => {
     render(<Button>Просто кнопка</Button>);
@@ -21,10 +30,11 @@ describe('ui primitives', () => {
 });
 
 describe('ingredients card', () => {
-  it('hides the allergen notice when the recipe has no allergens', () => {
-    render(<IngredientsCard recipe={{ ...recipeMock, allergens: [] }} />);
+  it('shows an unknown fridge status without claiming the product is missing', () => {
+    render(<IngredientsCard recipe={RECIPE} />);
 
     expect(screen.getByRole('heading', { name: 'Ингредиенты' })).toBeInTheDocument();
-    expect(screen.queryByText(/Аллергены/)).not.toBeInTheDocument();
+    expect(screen.getByText('Статус неизвестен')).toBeInTheDocument();
+    expect(screen.queryByText('Нужно добавить')).not.toBeInTheDocument();
   });
 });
