@@ -140,7 +140,7 @@ class EnrichOptions:
     cache_dir: str | Path = DEFAULT_CACHE_DIR
     timeout: int = DEFAULT_TIMEOUT_SECONDS
     dry_run: bool = False
-    opener: Callable = fetch_recipe_page
+    opener: Callable[..., str] = fetch_recipe_page
 
 
 def cache_path(cache_dir: str | Path, recipe_id: int) -> Path:

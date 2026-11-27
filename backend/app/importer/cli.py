@@ -161,6 +161,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             stats = enrich_recipes(
                 database,
                 EnrichOptions(
+                    # --limit accepts only positive integers; use the default when omitted.
                     limit=args.limit or DEFAULT_LIMIT,
                     delay=args.delay,
                     force=args.force,
