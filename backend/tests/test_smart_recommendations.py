@@ -14,6 +14,7 @@ import pytest
 
 from app.models import favorites as favorites_model
 from app.models import generated as generated_model
+from app.services import smart_recommendation_service
 
 TOMORROW = date.today() + timedelta(days=1)
 
@@ -127,6 +128,24 @@ def test_the_flag_on_ranks_the_favourites_and_the_fridge(
         }
     # Everything that was offered is audited in generated_recipes.
     assert len(generated_model.list_generated(db, user_id)) == 3
+
+
+def test_a_broken_smart_pipeline_falls_back_to_the_baseline(
+    smart_client, db_client, register_user, add_fridge_items, db, monkeypatch
+):
+    """A model/vector failure must degrade to the old scorer, not return a 500."""
+    _, token = _prepare_profile(db_client, db, register_user, add_fridge_items, favourites=True)
+
+    def broken(*args, **kwargs):
+        raise ValueError("broken artifact")
+
+    monkeypatch.setattr(smart_recommendation_service, "recommend_recipes", broken)
+
+    response = smart_client.get("/recommend_recipes", headers=_auth(token))
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [recipe["name"] for recipe in body["recipes"]] == ["Milk soup", "Milk porridge"]
 
 
 def test_the_flag_off_keeps_the_baseline_answer(db_client, register_user, add_fridge_items, db):

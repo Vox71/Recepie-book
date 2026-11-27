@@ -16,6 +16,7 @@ DEFAULT_JWT_TTL_HOURS = 12
 DEFAULT_JWT_ALGORITHM = "HS256"
 DEFAULT_DB_POOL_MIN = 1
 DEFAULT_DB_POOL_MAX = 10
+DEFAULT_DB_CONNECT_TIMEOUT = 5
 DEFAULT_RECOMMENDATIONS_LIMIT = 10
 # The stub ML module answers with a shorter list: the diagram of ml_planning/ml_plan
 # ends with "top-5 safe recipes", and KNN looks at this many neighbours.
@@ -66,6 +67,7 @@ class Settings:
         self.jwt_ttl = timedelta(hours=_as_int(env.get("JWT_TTL_HOURS"), DEFAULT_JWT_TTL_HOURS))
         self.db_pool_min = _as_int(env.get("DB_POOL_MIN"), DEFAULT_DB_POOL_MIN)
         self.db_pool_max = _as_int(env.get("DB_POOL_MAX"), DEFAULT_DB_POOL_MAX)
+        self.db_connect_timeout = _as_int(env.get("DB_CONNECT_TIMEOUT"), DEFAULT_DB_CONNECT_TIMEOUT)
         self.auto_init_schema = _as_bool(env.get("AUTO_INIT_SCHEMA"), True)
         self.cors_origins = _parse_origins(env.get("CORS_ORIGINS"))
         self.embeddings_enabled = _as_bool(env.get("EMBEDDINGS_ENABLED"), False)

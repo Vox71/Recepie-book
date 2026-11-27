@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { ROUTES } from './app/routes';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
+import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/layout/AppLayout';
 import AuthLayout from './components/layout/AuthLayout';
 import FridgePage from './pages/FridgePage';
@@ -26,20 +27,22 @@ function HomeRedirect() {
  */
 export default function App() {
   return (
-    <AuthProvider>
-      <Routes>
-        <Route element={<AuthLayout />}>
-          <Route path={ROUTES.login} element={<LoginPage />} />
-        </Route>
-        <Route element={<RequireAuth />}>
-          <Route element={<AppLayout />}>
-            <Route path={ROUTES.recipe} element={<RecipePage />} />
-            <Route path={ROUTES.fridge} element={<FridgePage />} />
-            <Route path={ROUTES.notFound} element={<NotFoundPage />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <Routes>
+          <Route element={<AuthLayout />}>
+            <Route path={ROUTES.login} element={<LoginPage />} />
           </Route>
-        </Route>
-        <Route path={ROUTES.home} element={<HomeRedirect />} />
-      </Routes>
-    </AuthProvider>
+          <Route element={<RequireAuth />}>
+            <Route element={<AppLayout />}>
+              <Route path={ROUTES.recipe} element={<RecipePage />} />
+              <Route path={ROUTES.fridge} element={<FridgePage />} />
+              <Route path={ROUTES.notFound} element={<NotFoundPage />} />
+            </Route>
+          </Route>
+          <Route path={ROUTES.home} element={<HomeRedirect />} />
+        </Routes>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

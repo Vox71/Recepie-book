@@ -211,12 +211,41 @@ def test_fetch_decodes_windows_1251_and_identifies_itself() -> None:
 
 def test_fetch_turns_http_error_into_page_error() -> None:
     """A 403 of the site is a readable error, and the run can stop on it."""
+    calls: list[int] = []
 
     def opener(request, *, timeout):
+        calls.append(1)
         raise HTTPError(URL, 403, "Forbidden", {}, None)
 
     with pytest.raises(PageError, match="HTTP 403"):
         fetch_recipe_page(URL, opener=opener)
+
+    # A deliberate 403 is not retried: the site asked us to stop.
+    assert len(calls) == 1
+
+
+def test_fetch_retries_transient_network_errors_then_succeeds() -> None:
+    """A timeout is transient: the second/third attempt may still return the page."""
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def opener(request, *, timeout):
+        calls.append(1)
+        if len(calls) < 3:
+            raise URLError("temporary network failure")
+        return FakeResponse('<h1 itemprop="name">Щи</h1>'.encode("cp1251"))
+
+    html = fetch_recipe_page(
+        URL,
+        opener=opener,
+        attempts=3,
+        backoff=0.5,
+        sleep=sleeps.append,
+    )
+
+    assert "Щи" in html
+    assert len(calls) == 3
+    assert sleeps == [0.5, 1.0]
 
 
 def test_fetch_turns_network_error_into_page_error() -> None:
@@ -368,6 +397,23 @@ def test_enrich_counts_a_failed_page_and_keeps_going(db, tmp_path) -> None:
     }
     assert marks[broken_id] is None
     assert marks[good_id] is not None
+
+
+def test_enrich_stops_after_repeated_page_failures(db, tmp_path) -> None:
+    """A run must not hammer a broken site forever: three failures stop it."""
+    for number in range(1, 5):
+        insert_recipe(db, f"https://www.povarenok.ru/recipes/show/{number}/", f"Сломанная {number}")
+
+    def opener(url, *, timeout):
+        raise PageError(f"{url}: network is down")
+
+    stats = enrich_recipes(db, cache_dir=tmp_path, delay=0.0, opener=opener)
+
+    assert stats.candidates == 4
+    assert stats.failed == 3
+    assert stats.updated == 0
+    assert stats.stopped is not None
+    assert "failures in a row" in stats.stopped
 
 
 def test_load_page_reports_where_the_html_came_from(tmp_path) -> None:

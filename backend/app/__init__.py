@@ -36,6 +36,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         app.config["SETTINGS"].database_url,
         app.config["SETTINGS"].db_pool_min,
         app.config["SETTINGS"].db_pool_max,
+        app.config["SETTINGS"].db_connect_timeout,
     )
     app.extensions["rate_limiter"] = InMemoryRateLimiter(
         app.config["SETTINGS"].rate_limit_max_requests,

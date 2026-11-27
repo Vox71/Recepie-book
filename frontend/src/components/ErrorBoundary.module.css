@@ -1,0 +1,33 @@
+.page {
+  max-width: 640px;
+  margin: var(--space-9) auto;
+  padding: var(--space-6);
+  color: var(--color-ink);
+  text-align: center;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-regular);
+}
+
+.text {
+  margin-top: var(--space-3);
+  color: var(--color-muted);
+}
+
+.button {
+  margin-top: var(--space-5);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.button:hover {
+  border-color: var(--color-brand);
+}

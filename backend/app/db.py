@@ -26,10 +26,17 @@ SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 class Database:
     """Thin transactional facade over a PostgreSQL connection pool."""
 
-    def __init__(self, dsn: str, pool_min: int = 1, pool_max: int = 10) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        pool_min: int = 1,
+        pool_max: int = 10,
+        connect_timeout: int = 5,
+    ) -> None:
         self._dsn = dsn
         self._pool_min = pool_min
         self._pool_max = pool_max
+        self._connect_timeout = max(1, connect_timeout)
         self._pool: pg_pool.AbstractConnectionPool | None = None
 
     @property
@@ -43,7 +50,10 @@ class Database:
                 raise DatabaseUnavailable("DATABASE_URL is not configured")
             try:
                 self._pool = pg_pool.ThreadedConnectionPool(
-                    self._pool_min, self._pool_max, dsn=self._dsn
+                    self._pool_min,
+                    self._pool_max,
+                    dsn=self._dsn,
+                    connect_timeout=self._connect_timeout,
                 )
             except (psycopg2.Error, OSError) as exc:
                 raise DatabaseUnavailable("Cannot connect to the database") from exc

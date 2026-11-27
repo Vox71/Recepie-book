@@ -30,6 +30,7 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-changeme}@db:5432/${DB_NAME:-mydatabase}
+      - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-5}
       - JWT_SECRET=${JWT_SECRET:-changeme}
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-changeme}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}

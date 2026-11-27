@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Callable
@@ -41,6 +42,11 @@ logger = logging.getLogger(__name__)
 # the importer introduces itself instead of pretending to be a browser.
 USER_AGENT = "RecepieBookBot/0.1 (+https://github.com/Vox71/Recepie-book; educational project)"
 DEFAULT_TIMEOUT_SECONDS = 20
+DEFAULT_FETCH_ATTEMPTS = 3
+DEFAULT_RETRY_BACKOFF_SECONDS = 0.5
+# 403/404/429 are answers of the site, not transient transport errors.  Retrying 429
+# would only make the block worse; the import loop stops on it.
+RETRYABLE_HTTP_STATUS = frozenset({408, 425, 500, 502, 503, 504})
 
 # Bounds of the target columns and of the answer: a page with 200 steps is a broken page,
 # not a recipe, and recipes.instruction is truncated the same way the API truncates it
@@ -400,12 +406,19 @@ def fetch_recipe_page(
     *,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
     opener: Callable = urlopen,
+    attempts: int = DEFAULT_FETCH_ATTEMPTS,
+    backoff: float = DEFAULT_RETRY_BACKOFF_SECONDS,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> str:
     """Download one page and decode it; every failure becomes :class:`PageError`.
 
-    ``opener`` is injectable so the network logic is tested without the network, like the
-    Kaggle download in ``app/importer/source.py``.
+    Transient transport failures (timeout, DNS, 5xx) are retried a few times with
+    exponential backoff.  A 403/404/429 is not retried: it is a deliberate answer of the
+    site, and hammering it would only extend the block.  ``opener`` and ``sleep`` are
+    injectable, so the tests do not need a network and do not wait in real time.
     """
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
     request = Request(
         url,
         headers={
@@ -414,22 +427,41 @@ def fetch_recipe_page(
             "Accept-Language": "ru,en;q=0.8",
         },
     )
-    try:
-        # ``timeout`` is a keyword: the second positional argument of ``urlopen`` is
-        # the request body, not the timeout.
-        with opener(request, timeout=timeout) as response:
-            raw = response.read()
-            content_type = ""
-            headers = getattr(response, "headers", None)
-            if headers is not None:
-                content_type = headers.get("Content-Type", "") or ""
-    except HTTPError as exc:
-        raise PageError(f"{url}: HTTP {exc.code}") from exc
-    except URLError as exc:
-        raise PageError(f"{url}: {exc.reason}") from exc
-    except OSError as exc:
-        raise PageError(f"{url}: {exc}") from exc
-    return raw.decode(_charset(content_type), errors="replace")
+    last_error: PageError | None = None
+    for attempt in range(attempts):
+        try:
+            # ``timeout`` is a keyword: the second positional argument of ``urlopen`` is
+            # the request body, not the timeout.
+            with opener(request, timeout=timeout) as response:
+                raw = response.read()
+                content_type = ""
+                headers = getattr(response, "headers", None)
+                if headers is not None:
+                    content_type = headers.get("Content-Type", "") or ""
+            return raw.decode(_charset(content_type), errors="replace")
+        except HTTPError as exc:
+            last_error = PageError(f"{url}: HTTP {exc.code}")
+            retryable = exc.code in RETRYABLE_HTTP_STATUS
+        except URLError as exc:
+            last_error = PageError(f"{url}: {exc.reason}")
+            retryable = True
+        except (TimeoutError, OSError) as exc:
+            last_error = PageError(f"{url}: {exc}")
+            retryable = True
+        if not retryable or attempt + 1 >= attempts:
+            raise last_error
+        delay = backoff * (2**attempt)
+        logger.warning(
+            "%s failed (%s), retry %s/%s in %.1fs",
+            url,
+            last_error,
+            attempt + 1,
+            attempts - 1,
+            delay,
+        )
+        if delay > 0:
+            sleep(delay)
+    raise last_error or PageError(f"{url}: unknown fetch error")
 
 
 def _clean(text: str) -> str:
